@@ -80,13 +80,6 @@ SANS = "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"
 PARTS = {"mushaf": "I", "translation": "II", "companion": "III"}
 
 
-def render_style(style: str, book: str, w: int, h: int, qcf_fonts: Path, amiri: Path, serif: str,
-                 italic: str, bold: str) -> Image.Image:
-    """Cover in one of the alternative styles: bestseller, ordinary or popart."""
-    return {"bestseller": _bestseller, "ordinary": _ordinary, "popart": _popart}[style](
-        book, w, h, qcf_fonts, amiri, serif, italic, bold)
-
-
 def _bestseller(book, w, h, qcf_fonts, amiri, serif, italic, bold):
     """Bold modern type over one large shape, like a popular non-fiction paperback."""
     img = Image.new("L", (w, h), 238)
@@ -174,3 +167,122 @@ def _pop_star(cx, cy, r):
 def _ink_width2(font, text):
     left, _, right, _ = font.getbbox(text, anchor="ls")
     return right - left
+
+
+def _calligraphy(book, w, h, qcf_fonts, amiri, serif, italic, bold):
+    """Bestseller: oversized pale calligraphy running off the edges, crisp English over it."""
+    img = Image.new("L", (w, h), 245)
+    d = ImageDraw.Draw(img)
+    huge = ImageFont.truetype(str(amiri), round(w * 0.62))
+    _ink(d, (w * 0.42, h * 0.40), "القرآن", huge, 205)
+    big = ImageFont.truetype(SANS_BOLD, round(w * 0.1))
+    d.text((w * 0.08, h * 0.74), "THE NOBLE", font=big, fill=0, anchor="ls")
+    d.text((w * 0.08, h * 0.74 + w * 0.11), "QUR'AN", font=big, fill=0, anchor="ls")
+    title = ImageFont.truetype(str(amiri), round(w * 0.06))
+    d.text((w * 0.92, h * 0.74 + w * 0.11), ARABIC, font=title, fill=0, anchor="rs")
+    small = ImageFont.truetype(SANS, round(w * 0.028))
+    d.text((w * 0.08, h * 0.93), BOOKS[book].upper().replace(chr(0xA0), " "), font=small, fill=60, anchor="ls")
+    return quantize(img)
+
+
+def _swiss(book, w, h, qcf_fonts, amiri, serif, italic, bold):
+    """Bestseller: left-aligned bold type, a thick rule, a small Arabic title."""
+    img = Image.new("L", (w, h), 255)
+    d = ImageDraw.Draw(img)
+    x = w * 0.09
+    d.rectangle((x, h * 0.1, x + w * 0.16, h * 0.1 + w * 0.025), fill=0)
+    big = ImageFont.truetype(SANS_BOLD, round(w * 0.135))
+    for i, word in enumerate(("The", "Noble", "Qur'an")):
+        d.text((x - w * 0.006, h * 0.27 + i * w * 0.15), word, font=big, fill=0, anchor="ls")
+    d.line((x, h * 0.63, w - x, h * 0.63), fill=0, width=max(3, round(w * 0.008)))
+    title = ImageFont.truetype(str(amiri), round(w * 0.08))
+    d.text((w - x, h * 0.74), ARABIC, font=title, fill=0, anchor="rs", direction="rtl")
+    small = ImageFont.truetype(SANS, round(w * 0.03))
+    for i, line in enumerate(_wrap(BOOKS[book].replace(chr(0xA0), " "), small, w * 0.5)):
+        d.text((x, h * 0.70 + i * w * 0.045), line, font=small, fill=80, anchor="ls")
+    return quantize(img)
+
+
+def _lattice(book, w, h, qcf_fonts, amiri, serif, italic, bold):
+    """Bestseller: an arch window filled with a fine eight-pointed-star lattice."""
+    img = Image.new("L", (w, h), 240)
+    d = ImageDraw.Draw(img)
+    aw, top, bottom = w * 0.6, h * 0.08, h * 0.56
+    mask = Image.new("L", (w, h), 0)
+    md = ImageDraw.Draw(mask)
+    md.rectangle((w / 2 - aw / 2, top + aw / 2, w / 2 + aw / 2, bottom), fill=255)
+    md.ellipse((w / 2 - aw / 2, top, w / 2 + aw / 2, top + aw), fill=255)
+    pattern = Image.new("L", (w, h), 70)
+    pd = ImageDraw.Draw(pattern)
+    step = w * 0.1
+    for row in range(-1, int(h / step) + 2):
+        for col in range(-1, int(w / step) + 2):
+            pd.polygon(_pop_star(col * step, row * step, step * 0.46), outline=170, width=max(1, round(w * 0.003)))
+    img.paste(pattern, (0, 0), mask)
+    d.arc((w / 2 - aw / 2, top, w / 2 + aw / 2, top + aw), 180, 360, fill=0, width=max(2, round(w * 0.005)))
+    title = ImageFont.truetype(str(amiri), round(w * 0.1))
+    _ink(d, (w / 2, h * 0.65), ARABIC, title, 0)
+    big = ImageFont.truetype(SANS_BOLD, round(w * 0.065))
+    d.text((w / 2, h * 0.76), "THE NOBLE QUR'AN", font=big, fill=0, anchor="mm")
+    small = ImageFont.truetype(SANS, round(w * 0.028))
+    for i, line in enumerate(_wrap(BOOKS[book].upper(), small, w * 0.8)):
+        d.text((w / 2, h * 0.83 + i * w * 0.04), line.replace(chr(0xA0), " "), font=small, fill=70, anchor="mm")
+    return quantize(img)
+
+
+def _notebook(book, w, h, qcf_fonts, amiri, serif, italic, bold):
+    """Ordinary: a plain dark notebook with an elastic band and a small label."""
+    img = Image.new("L", (w, h), 45)
+    d = ImageDraw.Draw(img)
+    d.rectangle((w * 0.84, 0, w * 0.87, h), fill=25)
+    lw, lh = w * 0.42, w * 0.16
+    lx, ly = w * 0.18, h * 0.62
+    d.rectangle((lx, ly, lx + lw, ly + lh), fill=225)
+    label = ImageFont.truetype(serif, round(w * 0.045))
+    d.text((lx + lw / 2, ly + lh * 0.42), "Daily Reading", font=label, fill=40, anchor="mm")
+    part = ImageFont.truetype(italic, round(w * 0.03))
+    d.text((lx + lw / 2, ly + lh * 0.75), f"Part {PARTS[book]}", font=part, fill=90, anchor="mm")
+    return quantize(img)
+
+
+def _paperback(book, w, h, qcf_fonts, amiri, serif, italic, bold):
+    """Ordinary: a classic paperback, centred serif title inside a simple frame."""
+    img = Image.new("L", (w, h), 236)
+    d = ImageDraw.Draw(img)
+    m = w * 0.08
+    d.rectangle((m, m, w - m, h - m), outline=60, width=max(2, round(w * 0.004)))
+    head = ImageFont.truetype(serif, round(w * 0.095))
+    d.text((w / 2, h * 0.36), "Daily Reading", font=head, fill=30, anchor="mm")
+    d.line((w * 0.42, h * 0.43, w * 0.58, h * 0.43), fill=60, width=max(1, round(w * 0.003)))
+    part = ImageFont.truetype(italic, round(w * 0.045))
+    d.text((w / 2, h * 0.49), f"Part {PARTS[book]}", font=part, fill=70, anchor="mm")
+    dot = w * 0.012
+    for i in (-1, 0, 1):
+        cx = w / 2 + i * w * 0.05
+        d.ellipse((cx - dot, h * 0.8 - dot, cx + dot, h * 0.8 + dot), fill=90)
+    return quantize(img)
+
+
+def _geometric(book, w, h, qcf_fonts, amiri, serif, italic, bold):
+    """Ordinary: abstract stacked shapes, a small title in the corner."""
+    img = Image.new("L", (w, h), 250)
+    d = ImageDraw.Draw(img)
+    d.ellipse((w * 0.18, h * 0.12, w * 0.82, h * 0.12 + w * 0.64), fill=200)
+    d.rectangle((w * 0.3, h * 0.38, w * 0.95, h * 0.62), fill=110)
+    d.ellipse((w * 0.08, h * 0.5, w * 0.38, h * 0.5 + w * 0.3), fill=40)
+    head = ImageFont.truetype(SANS_BOLD, round(w * 0.055))
+    d.text((w * 0.08, h * 0.84), "Daily Reading", font=head, fill=20, anchor="ls")
+    part = ImageFont.truetype(SANS, round(w * 0.035))
+    d.text((w * 0.08, h * 0.89), f"Part {PARTS[book]}", font=part, fill=90, anchor="ls")
+    return quantize(img)
+
+
+STYLES = {"bestseller": _bestseller, "calligraphy": _calligraphy, "swiss": _swiss, "lattice": _lattice,
+          "ordinary": _ordinary, "notebook": _notebook, "paperback": _paperback, "geometric": _geometric,
+          "popart": _popart}
+
+
+def render_style(style: str, book: str, w: int, h: int, qcf_fonts: Path, amiri: Path, serif: str,
+                 italic: str, bold: str) -> Image.Image:
+    """Cover in one of the alternative STYLES."""
+    return STYLES[style](book, w, h, qcf_fonts, amiri, serif, italic, bold)
