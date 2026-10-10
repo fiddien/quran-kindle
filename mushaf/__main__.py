@@ -1,5 +1,6 @@
 """Command line: python -m mushaf --device paperwhite --book mushaf,companion"""
 import argparse
+import json
 import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
@@ -7,7 +8,8 @@ from pathlib import Path
 from . import sources, textbook
 from .companion import CompanionRenderer
 from .cover import _rosette as render_rosette
-from .translation import TranslationRenderer, load_footnoted, load_intros, load_translation
+from .topics import INDEX, index_screens, load_topics
+from .translation import TranslationRenderer, load_footnoted, load_themes, load_translation
 from .data import PAGE_COUNT, load, load_glosses
 from .epub import Screen, toc_tree, write_epub
 from .pdf import write_pdf
@@ -175,18 +177,25 @@ def _text_book(book, a, device, ui_font, fonts, wanted):
         if book == "translation-text":
             _, names = load_translation(sources.fetch("quran-cloud", a.cache))
             verses, notes = load_footnoted(sources.local("qul-saheeh"))
-            intros = load_intros(sources.local("qul-surah-info-en"))
+            themes = load_themes(sources.local("qul-surah-info-en"))
             amiri = sources.fetch("amiri-quran", a.cache) / "files" / "amiri-quran-arabic-400-normal.woff2"
             return TranslationRenderer(*args, verses=verses, names=names, serif=fonts[0], italic=fonts[1],
-                                       bold=fonts[2], intros=intros, notes=notes, symbol=str(amiri))
+                                       bold=fonts[2], themes=themes, notes=notes, symbol=str(amiri), index=INDEX)
         return Renderer(*args)
 
     def screens(r):
         if book == "mushaf-text":
             return textbook.mushaf_screens(r, wanted)
-        return [s for n in wanted for s in r.screens_ops(r.mushaf.pages[n - 1])]
+        out = [s for n in wanted for s in r.screens_ops(r.mushaf.pages[n - 1])]
+        if book == "translation-text":
+            verse_page = {k: v["page"] for k, v in json.loads((qcf4 / "verses.json").read_text()).items()}
+            topics = load_topics(sources.local("qul-topics"), verse_page, set(wanted))
+            out += index_screens(r, topics, wanted[-1])
+        return out
 
     tree = toc_tree(mushaf, pages=book != "mushaf-text")
+    if book == "translation-text":
+        tree.append(("Topic index", INDEX, []))
     stem = a.out / a.device / f"{book}-{a.device}{'-sample' if a.pages else ''}"
     stem.parent.mkdir(parents=True, exist_ok=True)
     print(f"{book}: laying out {len(wanted)} pages for {device.name}")

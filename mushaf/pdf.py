@@ -40,6 +40,10 @@ def write_pdf(screens: list, tree: list, images: Path, out: Path, w: int, h: int
         if s.first:
             for key in keys.get(s.page, []):
                 c.bookmarkPage(key)
+        for key in keys.get(s.stem, []):
+            c.bookmarkPage(key)
+        # === every screen is a link target under its own stem ===
+        c.bookmarkPage(s.stem)
         c.addPageLabel(i, "D", s.page)
         c.showPage()
 

@@ -5,6 +5,7 @@ import json
 import re
 import sqlite3
 import zipfile
+from html import unescape
 from pathlib import Path
 
 from PIL import ImageFont
@@ -62,30 +63,71 @@ def _clean_note(note: str) -> str:
     return note[2:] if note.startswith("- ") else note
 
 
-def load_intros(info: Path) -> dict:
-    """QUL's short English introduction to each surah, as {surah: text}."""
+def load_themes(info: Path) -> dict:
+    """The theme section of QUL's English introduction to each surah.
+
+    Returns {surah: (heading, paragraphs)}, a paragraph being ("p" | "h3", text).
+    The few introductions without a theme section give their short text instead.
+    """
     csv.field_size_limit(1 << 24)  # === the full introductions run to tens of kilobytes ===
     with zipfile.ZipFile(info) as z:
-        rows = csv.DictReader(io.TextIOWrapper(z.open("surah-info-en.csv"), encoding="utf-8"))
-        return {int(r["surah_number"]): r["short_text"].strip() for r in rows}
+        rows = list(csv.DictReader(io.TextIOWrapper(z.open("surah-info-en.csv"), encoding="utf-8")))
+    themes = {}
+    for r in rows:
+        parts = re.split(r"<h2>(.*?)</h2>", r["text"])
+        sections = list(zip(parts[1::2], parts[2::2]))
+        theme = next(((h, body) for h, body in sections if THEME.search(h)), None)
+        if theme:
+            themes[int(r["surah_number"])] = (_plain(theme[0]).rstrip(".:"), _paragraphs(theme[1]))
+        else:
+            themes[int(r["surah_number"])] = ("Name", [("p", r["short_text"].strip())])
+    return themes
+
+
+THEME = re.compile(r"them|subject|topic", re.I)
+
+
+def _plain(html: str) -> str:
+    return " ".join(unescape(re.sub(r"<[^>]+>", " ", html)).split()).replace(" ,", ",").replace(" .", ".")
+
+
+def _paragraphs(html: str) -> list:
+    """Paragraphs, list items (numbered) and sub-headings of a section, as plain text."""
+    out, number = [], 0
+    for tag, body in re.findall(r"<(p|li|h3|/?ol)\b[^>]*>(?:(.*?)</(?:p|li|h3)>)?", html, re.S):
+        if tag in ("ol", "/ol"):
+            number = 0
+            continue
+        text = _plain(body)
+        if not text:
+            continue
+        if tag == "li":
+            number += 1
+            text = f"{number}. {text}"
+        out.append(("h3" if tag == "h3" else "p", text))
+    return out
 
 
 class TranslationRenderer(Renderer):
     def __init__(self, *args, verses: dict, names: dict, serif: str, italic: str, bold: str,
-                 intros: dict = None, notes: dict = None, symbol: str = None, **kw):
+                 themes: dict = None, notes: dict = None, symbol: str = None, index: str = None, **kw):
         super().__init__(*args, **kw)
         self.verses, self.names = verses, names
-        self.intros, self.notes = intros or {}, notes or {}
+        self.themes, self.notes = themes or {}, notes or {}
         self.serif, self.italic, self.bold, self.symbol = serif, italic, bold, symbol
+        self.index = index  # === stem of the topic index's first screen, linked from every translation screen ===
         w, h = self.device.width, self.device.height
         self.side = round(w * 0.07)
         self.text_top = self.top + h * 0.025
         self.text_bottom = h - h * 0.03
         # === start near 10 pt on a 6-inch 167-ppi screen and shrink until the page's verses fit ===
         self.sizes = range(round(w * 0.04), round(w * 0.015), -1)
+        # === below 14 px on that screen (about 6 pt), a page moves on to a second screen instead ===
+        self.floor = round(w * 14 / 600)
+        self.reading = round(w * 0.03)  # === type size of the surah introductions and the index ===
 
     def blocks(self, page) -> list:
-        """Surah headings, introductions and verses on the page, in reading order."""
+        """Surah headings and verses on the page, in reading order."""
         out, seen = [], set()
         for line in page.lines:
             for w in line["words"]:
@@ -97,8 +139,6 @@ class TranslationRenderer(Renderer):
                 if ayah == 1:
                     chapter = self.mushaf.chapters[surah - 1]
                     out.append(("heading", f"{chapter.name} · {self.names[surah]}"))
-                    if self.intros.get(surah):
-                        out.append(("intro", self.intros[surah]))
                 continued = w["type"] == "word" and w.get("position", 1) > 1
                 out.append(("verse", ayah, self.verses[key], continued, self.notes.get(key, [])))
         return out
@@ -148,31 +188,28 @@ class TranslationRenderer(Renderer):
             lines.append(current)
         return [_merge(line) for line in lines]
 
-    def layout(self, page, size: int) -> tuple:
-        """Rows for the verses and rows for the footnotes, at one type size."""
+    def _paragraph(self, text: str, font, fill, leading: float, width: float) -> list:
+        words = [self._runs(w, font, fill) for w in text.split()]
+        return [("runs", 0, line, leading) for line in self._wrap_runs(words, font.getlength(" "), width, width)]
+
+    def layout(self, blocks: list, size: int) -> tuple:
+        """Rows for the verses and rows for their footnotes, at one type size."""
         body = ImageFont.truetype(self.serif, size)
         number = ImageFont.truetype(self.bold, size)
         italic = ImageFont.truetype(self.italic, size)
         marker = ImageFont.truetype(self.bold, round(size * 0.62))
         heading = ImageFont.truetype(self.bold, round(size * 1.1))
-        intro = ImageFont.truetype(self.italic, round(size * 0.9))
         note_size = max(round(size * 0.8), 8)
         note_font = ImageFont.truetype(self.serif, note_size)
         note_number = ImageFont.truetype(self.bold, note_size)
         width = self.device.width - 2 * self.side
         leading = size * 1.32
         rows, notes = [], []
-        for block in self.blocks(page):
+        for block in blocks:
             if block[0] == "heading":
                 rows.append(("space", leading * 0.4))
                 rows.append(("center", block[1], heading, leading * 1.25))
                 rows.append(("space", leading * 0.2))
-                continue
-            if block[0] == "intro":
-                # === the surah's introduction, set apart from the verses in smaller gray italic ===
-                for line in wrap(block[1], intro, width):
-                    rows.append(("runs", 0, self._runs(line, intro, INTRO_INK), leading * 0.9))
-                rows.append(("space", leading * 0.6))
                 continue
             _, ayah, text, continued, verse_notes = block
             # === footnotes are numbered through the screen, in reading order ===
@@ -187,6 +224,8 @@ class TranslationRenderer(Renderer):
             for i, line in enumerate(lines or [[]]):
                 rows.append(("runs", 0, lead + line if i == 0 else line, leading))
             rows.append(("space", leading * 0.35))
+        while rows and rows[0][0] == "space":
+            rows.pop(0)
         while rows and rows[-1][0] == "space":
             rows.pop()
 
@@ -205,15 +244,40 @@ class TranslationRenderer(Renderer):
             note_rows.pop()
         return rows, note_rows
 
+    def _fits(self, layout, size) -> bool:
+        rows, notes = layout
+        gap = size if notes else 0
+        return sum(_height(r) for r in rows) + gap + sum(_height(r) for r in notes) <= self.text_bottom - self.text_top
+
+    def _split(self, blocks: list, size: int) -> list:
+        """Blocks shared out over as few screens as hold them at this size, breaking between verses."""
+        groups, current = [], []
+        for block in blocks:
+            if current and block[0] == "verse" and not self._fits(self.layout(current + [block], size), size):
+                # === a surah heading moves on with the verse it introduces ===
+                carry = []
+                while current and current[-1][0] == "heading":
+                    carry.insert(0, current.pop())
+                if current:
+                    groups.append(current)
+                current = carry
+            current = current + [block]
+        return groups + [current]
+
     def screens_layout(self, page) -> list:
-        """(verse rows, note rows) for one screen, at the largest size at which the page fits."""
-        room = self.text_bottom - self.text_top
-        for size in self.sizes:
-            rows, notes = self.layout(page, size)
-            gap = size if notes else 0
-            if sum(_height(r) for r in rows) + gap + sum(_height(r) for r in notes) <= room:
+        """(verse rows, note rows) per screen, at the largest size that keeps one screen
+        at or above the floor, or else two."""
+        blocks = self.blocks(page)
+        sizes = [s for s in self.sizes if s >= self.floor]
+        for size in sizes:
+            layout = self.layout(blocks, size)
+            if self._fits(layout, size):
+                return [layout]
+        for size in sizes:
+            groups = self._split(blocks, size)
+            if len(groups) <= 2:
                 break
-        return [(rows, notes)]
+        return [self.layout(group, size) for group in groups]
 
     def draw_screen(self, draw, page, layout, index, count):
         rows, notes = layout
@@ -243,15 +307,82 @@ class TranslationRenderer(Renderer):
                 _draw_runs(draw, x0, base, row[2])
                 _draw_runs(draw, x0 + row[1], base, row[3])
             y += _height(row)
+        if self.index:
+            self._index_link(draw)
+
+    def _index_link(self, draw):
+        """A "Topic index" link in the bottom margin, opening the index's first screen."""
+        font = ImageFont.truetype(self.italic, max(round(self.top * 0.4), 9))
+        x1 = self.device.width - self.side
+        base = self.device.height - (self.device.height - self.text_bottom) * 0.3
+        text = "Topic index \u203a"
+        draw.text((x1, base), text, font=font, fill=96, anchor="rs")
+        left = x1 - font.getlength(text)
+        if hasattr(draw, "link"):
+            draw.link((left - 6, self.text_bottom, x1 + 6, self.device.height), self.index)
+
+    def theme_layouts(self, page) -> list:
+        """Rows per screen for the introductions of the surahs that begin on this page."""
+        body = ImageFont.truetype(self.serif, self.reading)
+        bold = ImageFont.truetype(self.bold, self.reading)
+        heading = ImageFont.truetype(self.bold, round(self.reading * 1.15))
+        label = ImageFont.truetype(self.italic, self.reading)
+        width = self.device.width - 2 * self.side
+        leading = self.reading * 1.32
+        room = self.text_bottom - self.text_top
+        screens = []
+        for surah in page.starts:
+            if surah not in self.themes:
+                continue
+            title, paragraphs = self.themes[surah]
+            chapter = self.mushaf.chapters[surah - 1]
+            rows = [("center", f"{chapter.name} · {self.names[surah]}", heading, leading * 1.3),
+                    ("center", title, label, leading * 1.1), ("space", leading * 0.5)]
+            for kind, text in paragraphs:
+                font = bold if kind == "h3" else body
+                rows += self._paragraph(text, font, TEXT_INK, leading, width)
+                rows.append(("space", leading * 0.45))
+            # === one surah's introduction starts on a fresh screen and runs on as far as it needs ===
+            current, used = [], 0.0
+            for row in rows:
+                if used + _height(row) > room and current:
+                    screens.append(current)
+                    current, used = [], 0.0
+                if not current and row[0] == "space":
+                    continue
+                current.append(row)
+                used += _height(row)
+            screens.append(current)
+        return screens
+
+    def draw_theme(self, draw, page, rows, index, count):
+        italic = ImageFont.truetype(self.italic, round(self.top * 0.4))
+        label = "Introduction" + (f" · {index + 1} of {count}" if count > 1 else "")
+        self.frame(draw, page, center=lambda d, xy, band: d.text(xy, label, font=italic, fill=96, anchor="mm"))
+        y = self.text_top
+        for row in rows:
+            if row[0] != "space":
+                base = y + _height(row) * 0.78
+                if row[0] == "center":
+                    draw.text((self.device.width / 2, base), row[1], font=row[2], fill=INK, anchor="ms")
+                else:
+                    _draw_runs(draw, self.side + row[1], base, row[2])
+            y += _height(row)
 
     def screens_ops(self, page) -> list:
-        """The mushaf page, then its translation screen, as (Screen, recorded ops)."""
+        """The mushaf page, the introductions of surahs that begin on it, then its translation,
+        as (Screen, recorded ops)."""
         from .epub import Screen
         from .textbook import Recorder
 
         rec = Recorder()
         self.draw_page(rec, page)
         out = [(Screen(f"p{page.number:03d}", page.number, True), rec.ops)]
+        themes = self.theme_layouts(page)
+        for i, rows in enumerate(themes):
+            rec = Recorder()
+            self.draw_theme(rec, page, rows, i, len(themes))
+            out.append((Screen(f"i{page.number:03d}{i:02d}", page.number, False), rec.ops))
         parts = self.screens_layout(page)
         for i, layout in enumerate(parts):
             rec = Recorder()

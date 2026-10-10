@@ -15,6 +15,7 @@ to signed-in users, and committed under ./sources with their hashes pinned here.
 
 qul-surah-info-en : English surah introductions (QUL "Surah info", English).
 qul-saheeh        : Saheeh International English with the translator's footnotes.
+qul-topics        : Qur'an topics, each with the verses that mention it.
 """
 import base64
 import hashlib
@@ -60,6 +61,10 @@ FILES = {
     "qul-saheeh": (
         "qul-en-sahih-international-with-footnote-tags.db.zip",
         "sha512-0oEr3ETmDqSHrTbzNc52eW0kLXnIehwlj34YgTqYEoQlIcF0IcFjoyeybW8L3PuoQ+W83BpZM70ad25q4OEOcw==",
+    ),
+    "qul-topics": (
+        "qul-topics.db.zip",
+        "sha512-4TkxMwl5+3xtOxdIM8LGiFebdWzHcTK8QJpd99nFbDIGeCp70jIKklm2Qoj6uiieTjyrno3dyqw3myz0VQ915Q==",
     ),
 }
 COMMITTED = Path(__file__).resolve().parent.parent / "sources"

@@ -57,12 +57,20 @@ page 50. `companion-text` is the same book in real text.
 
 ## Translation
 
-`translation-text` follows each mushaf page with one screen of the Saheeh International
-English translation of the verses on it. Where a surah begins, its heading is followed by
-a short introduction from QUL. The translator's footnotes are numbered through each
-screen and printed at its foot. A verse that begins on the previous page is
-repeated in full and marked *(continued)*. The type shrinks as needed so a page's
-translation always fits one screen.
+`translation-text` follows each mushaf page with the Saheeh International English
+translation of the verses on it. The translator's footnotes are numbered through each
+screen and printed at its foot. A verse that begins on the previous page is repeated in
+full and marked *(continued)*. The type shrinks as needed to keep a page's translation on
+one screen; where it would drop below about 6 pt (14 px on a 600-pixel-wide screen), the
+page takes two screens instead, split between verses.
+
+Where a surah begins, the mushaf page is followed by the theme of the surah from its
+introduction in QUL, on screens of its own.
+
+At the back, a topic index lists QUL's Qur'an topics A to Z with the mushaf pages where
+each appears, sub-topics nested beneath. Tapping a page number opens that page, every
+translation screen has a *Topic index* link at its foot, and the index is also in the
+table of contents.
 
 ## Build
 
@@ -103,8 +111,8 @@ The build downloads pinned npm packages and checks each against its sha512 hash:
 - [`quran-cloud`](https://www.npmjs.com/package/quran-cloud) for the English surah names;
 - [QUL](https://qul.tarteel.ai) (Quranic Universal Library, by Tarteel) for the Saheeh
   International English translation with the translator's footnotes (Saheeh International,
-  Abul-Qasim Publishing House), and for the short English surah introductions, whose text
-  matches the surah introductions of Sayyid Abul A'la Maududi's *Tafhim al-Qur'an*.
+  Abul-Qasim Publishing House), the English surah introductions, whose text matches the
+  surah introductions of Sayyid Abul A'la Maududi's *Tafhim al-Qur'an*, and the topics.
   QUL serves its files to signed-in users, so they are committed under `sources/` and
   checked against pinned sha512 hashes;
 - [`@fontsource/amiri-quran`](https://fontsource.org/fonts/amiri-quran) and

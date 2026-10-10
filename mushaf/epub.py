@@ -46,6 +46,9 @@ IMAGE_HEAD = "<style>html,body{margin:0;padding:0} img.full{position:absolute;to
 def toc_tree(mushaf: Mushaf, pages: bool = False) -> list:
     """(label, page, children) entries shared by the EPUB and PDF outlines.
 
+    `page` is a mushaf page number, or a screen stem for screens outside the
+    mushaf's pages, such as the topic index.
+
     With pages=True a third group lists every page under its juz', for books
     whose screens don't map one-to-one onto mushaf pages.
     """
@@ -115,6 +118,7 @@ def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: in
     book_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, 'quran-kindle/' + title)}"
     modified = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     href = {s.page: f"text/{s.stem}.xhtml" for s in reversed(screens)}
+    href.update({s.stem: f"text/{s.stem}.xhtml" for s in screens})
     firsts = [s for s in screens if s.first]
 
     manifest = ['<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',

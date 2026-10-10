@@ -35,6 +35,10 @@ class Recorder:
     def rounded_rectangle(self, xy, radius=0, outline=None, width=1, fill=None):
         self.ops.append(("rect", xy, outline, width, radius, fill))
 
+    def link(self, xy, target):
+        """A tappable area that opens the screen named `target` (its stem)."""
+        self.ops.append(("link", xy, target))
+
 
 def _gray(v) -> str:
     v = PAPER if v is None else int(v)
@@ -108,6 +112,10 @@ def to_html(ops, is_text_font=lambda family: True) -> tuple:
                 f'<div style="left:{box[0]:.1f}px;top:{box[1]:.1f}px;width:{box[2]:.1f}px;'
                 f'height:{box[3]:.1f}px;background:{_gray(fill)}"></div>'
             )
+        elif op[0] == "link":
+            _, (x0, y0, x1, y1), target = op
+            out.append(f'<a href="{target}.xhtml" style="left:{x0:.1f}px;top:{y0:.1f}px;'
+                       f'width:{x1 - x0:.1f}px;height:{y1 - y0:.1f}px"></a>')
         elif op[0] == "rect":
             _, (x0, y0, x1, y1), outline, width, radius, fill = op
             border = f"border:{width}px solid {_gray(outline)};" if outline is not None else ""
@@ -186,7 +194,7 @@ def build(screens_ops: list, tree: list, out: Path, w: int, h: int, title: str, 
     """
     from .epub import write_epub
 
-    tree = _prune(tree, {screen.page for screen, _ in screens_ops})
+    tree = _prune(tree, {screen.page for screen, _ in screens_ops} | {screen.stem for screen, _ in screens_ops})
     screens, assets = [], {}
     for screen, ops in screens_ops:
         body, _, labels = to_html(ops, is_text_font=is_text_font)
@@ -203,7 +211,7 @@ def build(screens_ops: list, tree: list, out: Path, w: int, h: int, title: str, 
     css = "\n".join(faces) + f"""
 html,body{{margin:0;padding:0}}
 .page{{position:relative;width:{w}px;height:{h}px;overflow:hidden;background:#fff}}
-.page span,.page div,.page img{{position:absolute;white-space:nowrap;margin:0;padding:0;box-sizing:border-box}}
+.page span,.page div,.page img,.page a{{position:absolute;white-space:nowrap;margin:0;padding:0;box-sizing:border-box}}
 """
     assets["style.css"] = ("text/css", css.encode())
     assets["img/cover.png"] = ("image/png", cover_png)
@@ -235,7 +243,8 @@ def build_pdf(screens_ops: list, tree: list, out: Path, w: int, h: int, title: s
         paint_ops(c, ops_of[screen.stem], h, k, names)
 
     screens = [screen for screen, _ in screens_ops]
-    write_pdf(screens, _prune(tree, {s.page for s in screens}), None, out, w, h, title, paint=paint)
+    keep = {s.page for s in screens} | {s.stem for s in screens}
+    write_pdf(screens, _prune(tree, keep), None, out, w, h, title, paint=paint)
 
 
 def mushaf_screens(renderer, pages) -> list:
@@ -280,6 +289,10 @@ def paint_ops(c, ops, h: int, k: float, names: dict = None) -> None:
                 box = (x0 - width / 2, min(y0, y1), width, abs(y1 - y0))
             c.setFillGray(fill / 255)
             c.rect(box[0] * k, (h - box[1] - box[3]) * k, box[2] * k, box[3] * k, stroke=0, fill=1)
+        elif op[0] == "link":
+            # === targets are screen stems, which write_pdf bookmarks on every page ===
+            _, (x0, y0, x1, y1), target = op
+            c.linkRect("", target, (x0 * k, (h - y1) * k, x1 * k, (h - y0) * k), relative=0, thickness=0)
         elif op[0] == "rect":
             _, (x0, y0, x1, y1), outline, width, radius, fill = op
             c.setStrokeGray((outline if outline is not None else 255) / 255)
