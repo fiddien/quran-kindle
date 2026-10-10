@@ -10,9 +10,9 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from PIL import ImageFont
 
 from .render import INK
+from .translation import _font
 
 INDEX = "x000"  # === stem of the index's first screen, the A to Z ===
 
@@ -80,7 +80,7 @@ def load_topics(db_zip: Path, verse_page: dict, pages: set) -> tuple:
     for tid, keys in verses.items():
         for key in keys:
             by_verse.setdefault(key, set()).add(top(tid))
-    return topics, {key: sorted(names, key=sort_key) for key, names in by_verse.items()}
+    return topics, {key: sorted(names, key=lambda n: (sort_key(n), n)) for key, names in by_verse.items()}
 
 
 def _tidy(topics: list) -> list:
@@ -90,7 +90,7 @@ def _tidy(topics: list) -> list:
         t.children = _tidy(t.children)
         if t.pages or t.children:
             out.append(t)
-    return sorted(out, key=lambda t: sort_key(t.name))
+    return sorted(out, key=lambda t: (sort_key(t.name), t.name))
 
 
 def sort_key(name: str) -> str:
@@ -111,14 +111,14 @@ def index_screens(r, topics: list, last_page: int) -> tuple:
 
     w, h = r.device.width, r.device.height
     size = r.reading
-    body = ImageFont.truetype(r.serif, size)
-    main = ImageFont.truetype(r.bold, size)
-    letter_font = ImageFont.truetype(r.bold, round(size * 1.6))
+    body = _font(r.serif, size)
+    main = _font(r.bold, size)
+    letter_font = _font(r.bold, round(size * 1.6))
     leading = size * 1.3
     width = w - 2 * r.side
     step = size * 1.1  # === indent per level, and the hang of a wrapped line ===
 
-    italic = ImageFont.truetype(r.italic, size)
+    italic = _font(r.italic, size)
     # === rows: ("letter", text, main entry, height) or ("line", [(x, text, font, target)], main entry, height) ===
     rows, starts = [], set()
     for t in topics:
@@ -208,7 +208,7 @@ def _entry(t: Topic, depth: int, body, main, step, width, leading) -> list:
 
 def _frame(rec, r, label: str, back: bool = False):
     """The index's running header: its label, centered over a rule; tapping it opens the A to Z."""
-    font = ImageFont.truetype(r.italic, round(r.top * 0.4))
+    font = _font(r.italic, round(r.top * 0.4))
     w = r.device.width
     rec.text((w / 2, r.top * 0.55), label, font=font, fill=96, anchor="mm")
     rec.line((r.side, r.top, w - r.side, r.top), fill=160, width=1)
@@ -220,9 +220,9 @@ def _contents(rec, r, letters: list, target: dict):
     """The first index screen: a note on its use and a grid of letters."""
     w = r.device.width
     size = r.reading
-    title = ImageFont.truetype(r.bold, round(size * 1.3))
-    note = ImageFont.truetype(r.italic, size)
-    big = ImageFont.truetype(r.bold, round(size * 1.7))
+    title = _font(r.bold, round(size * 1.3))
+    note = _font(r.italic, size)
+    big = _font(r.bold, round(size * 1.7))
     y = r.text_top + size * 2
     rec.text((w / 2, y), "Topic index", font=title, fill=INK, anchor="ms")
     y += size * 1.8

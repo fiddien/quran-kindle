@@ -8,6 +8,8 @@ import zipfile
 from html import unescape
 from pathlib import Path
 
+from functools import lru_cache
+
 from PIL import ImageFont
 
 from .companion import wrap
@@ -20,6 +22,12 @@ TOPIC_INK = 110
 SALLA = "\ufdfa"  # === the salla symbol, which the serif faces lack: drawn in Amiri Quran instead ===
 MARK = 0xE000  # === footnote n of a verse is stood in for by chr(MARK + n) while wrapping ===
 SUP = re.compile(r'<sup foot_note="?(\d+)"?>[^<]*</sup>')
+
+
+@lru_cache(maxsize=None)
+def _font(path: str, size: int) -> ImageFont.FreeTypeFont:
+    """Fonts are loaded once per size: layout tries many sizes for every page."""
+    return ImageFont.truetype(str(path), size)
 
 
 def load_translation(cloud: Path) -> tuple:
@@ -148,7 +156,7 @@ class TranslationRenderer(Renderer):
     # === runs: (text, font, fill, rise); a line is drawn as its runs side by side ===
 
     def _symbol(self, font):
-        return ImageFont.truetype(self.symbol, font.size) if self.symbol else font
+        return _font(self.symbol, font.size) if self.symbol else font
 
     def _runs(self, text: str, font, fill, rise=0.0) -> list:
         """Text as runs, with the salla symbol split out into the symbol font."""
@@ -196,15 +204,15 @@ class TranslationRenderer(Renderer):
 
     def layout(self, blocks: list, size: int) -> tuple:
         """Rows for the verses and rows for their footnotes, at one type size."""
-        body = ImageFont.truetype(self.serif, size)
-        number = ImageFont.truetype(self.bold, size)
-        italic = ImageFont.truetype(self.italic, size)
-        marker = ImageFont.truetype(self.bold, round(size * 0.62))
-        heading = ImageFont.truetype(self.bold, round(size * 1.1))
+        body = _font(self.serif, size)
+        number = _font(self.bold, size)
+        italic = _font(self.italic, size)
+        marker = _font(self.bold, round(size * 0.62))
+        heading = _font(self.bold, round(size * 1.1))
         note_size = max(round(size * 0.8), 8)
-        note_font = ImageFont.truetype(self.serif, note_size)
-        note_number = ImageFont.truetype(self.bold, note_size)
-        topic_font = ImageFont.truetype(self.italic, max(round(size * 0.8), 8))
+        note_font = _font(self.serif, note_size)
+        note_number = _font(self.bold, note_size)
+        topic_font = _font(self.italic, max(round(size * 0.8), 8))
         full = self.device.width - 2 * self.side
         # === with topics, the verses keep 70% of the width and the topics take a column at the right ===
         column = full * 0.3 if self.topics else 0
@@ -250,7 +258,8 @@ class TranslationRenderer(Renderer):
             hang = note_number.getlength(f"{len(notes)}  ")
             for n, note in enumerate(notes, 1):
                 words = [self._runs(w, note_font, NOTE_INK) for w in note.split()]
-                lines = self._wrap_runs(words, note_font.getlength(" "), width - hang, width - hang)
+                # === below the verses the topic column is empty, so the notes take the full width ===
+                lines = self._wrap_runs(words, note_font.getlength(" "), full - hang, full - hang)
                 for i, line in enumerate(lines):
                     lead = [(f"{n}", note_number, INK, 0)] if i == 0 else []
                     note_rows.append(("note", hang, lead, line, note_leading))
@@ -295,7 +304,7 @@ class TranslationRenderer(Renderer):
 
     def draw_screen(self, draw, page, layout, index, count):
         rows, notes = layout
-        italic = ImageFont.truetype(self.italic, round(self.top * 0.4))
+        italic = _font(self.italic, round(self.top * 0.4))
         label = "Translation" + (f" · {index + 1} of {count}" if count > 1 else "")
         self.frame(draw, page, center=lambda d, xy, band: d.text(xy, label, font=italic, fill=96, anchor="mm"))
         x0 = self.side
@@ -326,10 +335,10 @@ class TranslationRenderer(Renderer):
 
     def theme_layouts(self, page) -> list:
         """Rows per screen for the introductions of the surahs that begin on this page."""
-        body = ImageFont.truetype(self.serif, self.reading)
-        bold = ImageFont.truetype(self.bold, self.reading)
-        heading = ImageFont.truetype(self.bold, round(self.reading * 1.15))
-        label = ImageFont.truetype(self.italic, self.reading)
+        body = _font(self.serif, self.reading)
+        bold = _font(self.bold, self.reading)
+        heading = _font(self.bold, round(self.reading * 1.15))
+        label = _font(self.italic, self.reading)
         width = self.device.width - 2 * self.side
         leading = self.reading * 1.32
         room = self.text_bottom - self.text_top
@@ -359,7 +368,7 @@ class TranslationRenderer(Renderer):
         return screens
 
     def draw_theme(self, draw, page, rows, index, count):
-        italic = ImageFont.truetype(self.italic, round(self.top * 0.4))
+        italic = _font(self.italic, round(self.top * 0.4))
         label = "Introduction" + (f" · {index + 1} of {count}" if count > 1 else "")
         self.frame(draw, page, center=lambda d, xy, band: d.text(xy, label, font=italic, fill=96, anchor="mm"))
         y = self.text_top
