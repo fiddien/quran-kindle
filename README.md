@@ -52,9 +52,10 @@ python -m mushaf --text-scale 0.85            # smaller script, more space betwe
 A full build of both books takes about 6 minutes on 4 cores. Devices: `paperwhite` (2021+),
 `paperwhite-old`, `kindle`, `oasis`, `scribe`, `kobo-clara`, `kobo-libra`.
 
-Pushing a tag such as `v1.0.0` makes GitHub Actions build the `paperwhite`, `kindle` and
-`oasis` sizes and publish them as a release. The *Build books* workflow can also be run by
-hand from the Actions tab; its files then appear as downloads on that run's page for 7 days.
+Pushing a tag such as `v1.0.0`, or running the *Build books* workflow by hand with a
+release version, makes GitHub Actions build the `paperwhite`, `kindle` and
+`oasis` sizes and publish them as a release. Run by hand without a version, the workflow
+only builds; its files then appear as downloads on that run's page for 7 days.
 
 ## Put it on the Kindle
 

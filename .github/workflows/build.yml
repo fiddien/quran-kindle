@@ -5,6 +5,11 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish as this release version, e.g. v1.0.0 (leave empty to only build)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -40,7 +45,7 @@ jobs:
           retention-days: 7
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.release != ''
     needs: build
     runs-on: ubuntu-latest
     steps:
@@ -51,8 +56,11 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          # === a hand-run release names its version; gh creates the tag at this commit ===
+          TAG: ${{ inputs.release || github.ref_name }}
         run: |
-          gh release create "${{ github.ref_name }}" books/* \
+          gh release create "$TAG" books/* \
             --repo "${{ github.repository }}" \
-            --title "Madinah Mushaf for e-readers ${{ github.ref_name }}" \
+            --target "${{ github.sha }}" \
+            --title "Madinah Mushaf for e-readers $TAG" \
             --notes "Download the EPUB for your device and send it with Send to Kindle, or copy the PDF over USB. See the README for which file fits your e-reader."
