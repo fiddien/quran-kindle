@@ -116,20 +116,24 @@ class Renderer:
             x -= gap
 
     def surah_banner(self, draw, word, y, h):
-        """A framed title band with ornamental end caps, like the printed mushaf."""
-        m = self.margin
-        right = self.device.width - m
-        top, bottom = y + h * 0.1, y + h * 0.9
-        draw.rectangle((m, top, right, bottom), outline=INK, width=max(2, round(h * 0.03)))
+        """A rounded double-frame cartouche around the surah name, ornaments outside its ends."""
+        w = self.device.width
+        title = self.font("QCF4_QBSML", round(h * 0.46))
+        left, _, right, _ = title.getbbox(word["char"], anchor="ls")
+        half = (right - left) / 2 + h * 0.9
+        cx, mid = w / 2, y + h / 2
+        top, bottom = y + h * 0.16, y + h * 0.84
+        draw.rounded_rectangle((cx - half, top, cx + half, bottom), radius=h * 0.3, outline=INK, width=3)
         inset = h * 0.08
-        draw.rectangle((m + inset, top + inset, right - inset, bottom - inset),
-                       outline=INK, width=1)
-        cap = self.font("QCF4_QBSML", round(h * 0.75))
-        mid = (top + bottom) / 2
-        ink_centered(draw, (m + inset * 2, mid), "\ufae4", cap, "l")
-        ink_centered(draw, (right - inset * 2, mid), "\ufae5", cap, "r")
-        title = self.font("QCF4_QBSML", round(h * 0.55))
-        ink_centered(draw, (self.device.width / 2, mid), word["char"], title)
+        draw.rounded_rectangle((cx - half + inset, top + inset, cx + half - inset, bottom - inset),
+                               radius=h * 0.24, outline=INK, width=1)
+        cap = self.font("QCF4_QBSML", round(h * 0.8))
+        ink_centered(draw, (cx - half - h * 0.05, mid), "\ufaf3", cap, "r")
+        ink_centered(draw, (cx + half + h * 0.05, mid), "\ufaf2", cap, "l")
+        # === hairlines from the ornaments out to the text margins ===
+        draw.line((self.margin, mid, cx - half - h * 0.7, mid), fill=120, width=1)
+        draw.line((cx + half + h * 0.7, mid, w - self.margin, mid), fill=120, width=1)
+        ink_centered(draw, (cx, mid), word["char"], title)
 
     # === frame: spine shadow and running header ===
 
