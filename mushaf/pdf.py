@@ -13,6 +13,19 @@ from reportlab.pdfgen import canvas
 
 def write_pdf(screens: list, tree: list, images: Path, out: Path, w: int, h: int,
               title: str) -> None:
+    # === reportlab identifies outline entries by key, so each entry gets its own bookmark ===
+    entries = []
+
+    def flatten(items, level):
+        for label, page, children in items:
+            entries.append((f"o{len(entries)}", label, page, level, bool(children)))
+            flatten(children, level + 1)
+
+    flatten(tree, 0)
+    keys = {}
+    for key, _, page, _, _ in entries:
+        keys.setdefault(page, []).append(key)
+
     pw, ph = w * 72 / 300, h * 72 / 300
     c = canvas.Canvas(str(out), pagesize=(pw, ph), pageCompression=1)
     c.setTitle(title)
@@ -21,15 +34,12 @@ def write_pdf(screens: list, tree: list, images: Path, out: Path, w: int, h: int
     for i, s in enumerate(screens):
         c.drawImage(ImageReader(str(images / f"{s.stem}.png")), 0, 0, pw, ph)
         if s.first:
-            c.bookmarkPage(f"p{s.page}")
+            for key in keys.get(s.page, []):
+                c.bookmarkPage(key)
         c.addPageLabel(i, "D", s.page)
         c.showPage()
 
-    def add(entries, level):
-        for label, page, children in entries:
-            c.addOutlineEntry(label, f"p{page}", level=level, closed=bool(children))
-            add(children, level + 1)
-
-    add(tree, 0)
+    for key, label, _, level, closed in entries:
+        c.addOutlineEntry(label, key, level=level, closed=closed)
     c.showOutline()
     c.save()
