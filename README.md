@@ -24,9 +24,23 @@ Pick the files that match your screen:
 | `-paperwhite` | 1236×1648 | Kindle Paperwhite 5 and later (6.8″, 2021+) |
 | `-kindle` | 1072×1448 | Kindle Basic (2022+), Paperwhite 3/4, Kobo Clara |
 | `-oasis` | 1264×1680 | Kindle Oasis, Kobo Libra |
+| `-kindle-2019` | 600×800 | Kindle Basic 10th gen (2019, micro-USB) |
 
-Each size comes as two books, `mushaf-…` and `companion-…` (word by word), and each
-book comes as an EPUB and a PDF.
+Each size comes as three books:
+
+- `mushaf-text-….pdf`: the mushaf as real text, so you can highlight words and add
+  notes. Copy it over USB into the Kindle's `documents` folder.
+- `mushaf-….epub` and `.pdf`: the mushaf as page images.
+- `companion-….epub` and `.pdf`: the word-by-word companion.
+
+## Text edition
+
+In `mushaf-text` every word is real text in the King Fahd Complex font, placed exactly
+where the printed mushaf has it, so the page looks the same as the image edition. Kindle's
+PDF reader can highlight single words and attach notes to them. Its pages are a little
+shorter than the screen, leaving room for the reader's progress bar below them. In the
+notes list and in "My Clippings", highlighted Qur'an text shows as codes rather than
+Arabic, because those views don't use the book's font.
 
 ## Word-by-word companion
 
@@ -43,6 +57,7 @@ python -m mushaf --device paperwhite          # both books, EPUB + PDF, in out/p
 python -m mushaf --book mushaf                # only the mushaf
 python -m mushaf --pages 1-3,604              # quick preview PNGs only
 python -m mushaf --text-scale 0.85            # smaller script, more space between lines
+python -m mushaf --book mushaf-text --formats pdf   # the text edition as a PDF
 ```
 
 Devices: `paperwhite` (2021+),

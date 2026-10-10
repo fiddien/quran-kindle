@@ -21,8 +21,8 @@ jobs:
       # === one device failing shouldn't cancel the others ===
       fail-fast: false
       matrix:
-        # === paperwhite: 1236x1648 · kindle: 1072x1448 (also Paperwhite 3/4, Kobo Clara) · oasis: 1264x1680 (also Kobo Libra) ===
-        device: [paperwhite, kindle, oasis]
+        # === paperwhite: 1236x1648 · kindle: 1072x1448 (also Paperwhite 3/4, Kobo Clara) · oasis: 1264x1680 (also Kobo Libra) · kindle-2019: 600x800 ===
+        device: [paperwhite, kindle, oasis, kindle-2019]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,9 +35,11 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: cache
-          key: sources-${{ hashFiles('mushaf/sources.py') }}
-      - name: Build
+          key: sources-${{ hashFiles('mushaf/sources.py', 'mushaf/textbook.py') }}
+      - name: Build image books
         run: python -m mushaf --device ${{ matrix.device }}
+      - name: Build text PDF
+        run: python -m mushaf --device ${{ matrix.device }} --book mushaf-text --formats pdf
       - uses: actions/upload-artifact@v4
         with:
           name: books-${{ matrix.device }}
