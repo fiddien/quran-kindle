@@ -15,6 +15,21 @@ the device never rescales it. The book has:
   right-hand pages, with a soft spine shadow on their left edge and the page
   number in the top-right corner, and even pages mirror this.
 
+## Download
+
+Ready-made books are on the **[latest release](https://github.com/fiddien/quran-kindle/releases/latest)**.
+No GitHub account is needed. Pick the files that match your screen:
+
+| Files ending in | Screen | Devices |
+|---|---|---|
+| `-paperwhite` | 1236×1648 | Kindle Paperwhite 5 and later (6.8″, 2021+) |
+| `-kindle` | 1072×1448 | Kindle Basic (2022+), Paperwhite 3/4, Kobo Clara |
+| `-oasis` | 1264×1680 | Kindle Oasis, Kobo Libra |
+
+Each size comes as two books, `mushaf-…` and `companion-…` (word by word), and each
+book comes as an EPUB and a PDF. See [Put it on the Kindle](#put-it-on-the-kindle)
+for which one to use. For another screen size, [build it yourself](#build).
+
 ## Word-by-word companion
 
 A second book shows every mushaf line with an English gloss under each word.
@@ -34,8 +49,12 @@ python -m mushaf --pages 1-3,604              # quick preview PNGs only
 python -m mushaf --text-scale 0.85            # smaller script, more space between lines
 ```
 
-A full build of both books takes about 6 minutes on 4 cores. Devices: `paperwhite` (2021+), `paperwhite-old`, `kindle`, `oasis`, `scribe`,
-`kobo-clara`, `kobo-libra`.
+A full build of both books takes about 6 minutes on 4 cores. Devices: `paperwhite` (2021+),
+`paperwhite-old`, `kindle`, `oasis`, `scribe`, `kobo-clara`, `kobo-libra`.
+
+Pushing a tag such as `v1.0.0` makes GitHub Actions build the `paperwhite`, `kindle` and
+`oasis` sizes and publish them as a release. The *Build books* workflow can also be run by
+hand from the Actions tab; its files then appear as downloads on that run's page for 7 days.
 
 ## Put it on the Kindle
 
@@ -57,5 +76,7 @@ The build downloads two pinned npm packages, checks their hashes, and caches the
   translation's rights rest with its original authors.
 
 The fonts belong to the King Fahd Complex, and this repository does not include them.
-They may be used only for rendering the Qur'an. Keep the generated books for personal
-use; don't redistribute them.
+They may be used only for rendering the Qur'an. The released books contain rendered pages,
+not the fonts, and are shared free of charge for reading the Qur'an. Please don't sell
+them. If you hold rights to any of these sources and object to the releases, open an
+issue and they will be taken down.

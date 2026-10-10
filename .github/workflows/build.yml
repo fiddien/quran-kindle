@@ -1,0 +1,58 @@
+# === Builds the books for common screen sizes; a v* tag publishes them as a release ===
+name: Build books
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # === paperwhite: 1236x1648 · kindle: 1072x1448 (also Paperwhite 3/4, Kobo Clara) · oasis: 1264x1680 (also Kobo Libra) ===
+        device: [paperwhite, kindle, oasis]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install fonts and text shaping
+        run: sudo apt-get update && sudo apt-get install -y fonts-dejavu-core fonts-liberation libfribidi0
+      - name: Install Python packages
+        run: pip install -r requirements.txt
+      - uses: actions/cache@v4
+        with:
+          path: cache
+          key: sources-${{ hashFiles('mushaf/sources.py') }}
+      - name: Build
+        run: python -m mushaf --device ${{ matrix.device }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: books-${{ matrix.device }}
+          path: |
+            out/${{ matrix.device }}/*.epub
+            out/${{ matrix.device }}/*.pdf
+          retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: books
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" books/* \
+            --repo "${{ github.repository }}" \
+            --title "Madinah Mushaf for e-readers ${{ github.ref_name }}" \
+            --notes "Download the EPUB for your device and send it with Send to Kindle, or copy the PDF over USB. See the README for which file fits your e-reader."
