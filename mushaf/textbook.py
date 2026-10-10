@@ -35,6 +35,10 @@ class Recorder:
     def rounded_rectangle(self, xy, radius=0, outline=None, width=1, fill=None):
         self.ops.append(("rect", xy, outline, width, radius, fill))
 
+    def link(self, box, target: str):
+        """A tappable area (x0, y0, x1, y1) that jumps to the screen named `target`."""
+        self.ops.append(("link", box, target))
+
 
 def _gray(v) -> str:
     v = PAPER if v is None else int(v)
@@ -108,6 +112,10 @@ def to_html(ops, is_text_font=lambda family: True) -> tuple:
                 f'<div style="left:{box[0]:.1f}px;top:{box[1]:.1f}px;width:{box[2]:.1f}px;'
                 f'height:{box[3]:.1f}px;background:{_gray(fill)}"></div>'
             )
+        elif op[0] == "link":
+            _, (x0, y0, x1, y1), target = op
+            out.append(f'<a href="{target}.xhtml" style="position:absolute;display:block;left:{x0:.1f}px;'
+                       f'top:{y0:.1f}px;width:{x1 - x0:.1f}px;height:{y1 - y0:.1f}px"></a>')
         elif op[0] == "rect":
             _, (x0, y0, x1, y1), outline, width, radius, fill = op
             border = f"border:{width}px solid {_gray(outline)};" if outline is not None else ""
@@ -280,6 +288,9 @@ def paint_ops(c, ops, h: int, k: float, names: dict = None) -> None:
                 box = (x0 - width / 2, min(y0, y1), width, abs(y1 - y0))
             c.setFillGray(fill / 255)
             c.rect(box[0] * k, (h - box[1] - box[3]) * k, box[2] * k, box[3] * k, stroke=0, fill=1)
+        elif op[0] == "link":
+            _, (x0, y0, x1, y1), target = op
+            c.linkRect("", f"s_{target}", (x0 * k, (h - y1) * k, x1 * k, (h - y0) * k), relative=0, thickness=0)
         elif op[0] == "rect":
             _, (x0, y0, x1, y1), outline, width, radius, fill = op
             c.setStrokeGray((outline if outline is not None else 255) / 255)

@@ -37,6 +37,7 @@ def write_pdf(screens: list, tree: list, images: Path, out: Path, w: int, h: int
             paint(c, s, 72 / 300)
         else:
             c.drawImage(ImageReader(str(images / f"{s.stem}.png")), 0, 0, pw, ph)
+        c.bookmarkPage(f"s_{s.stem}")  # === destination for in-book links ===
         if s.first:
             for key in keys.get(s.page, []):
                 c.bookmarkPage(key)
