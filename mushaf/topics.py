@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
-from .folds import FOLDS
+from .folds import DROPPED, FOLDS
 from .render import INK
 from .translation import _font
 
@@ -35,6 +35,8 @@ def load_topics(db_zip: Path, verse_page: dict, pages: set) -> tuple:
     nodes, parent, verses = {}, {}, {}
     for tid, name, pid, tpid, ayahs in db.execute(
             "SELECT topic_id, name, parent_id, thematic_parent_id, ayahs FROM topics"):
+        if tid in DROPPED:
+            continue
         name = " ".join(name.split())
         name = FOLDS.get(name, name)  # === several of QUL's names for one topic become one entry ===
         refs = [a.strip() for a in (ayahs or "").split(",")]

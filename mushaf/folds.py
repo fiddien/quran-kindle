@@ -199,3 +199,8 @@ FOLDS = {
     "Zechariah": "Zachariah",
     "Alms-tax": "Zakat",
 }
+
+# === QUL topic ids left out: tags attached to verses they do not describe ===
+DROPPED = {
+    2411,  # === "his party" under Satan, given 53:14-19 (the Lote Tree and the Prophet's vision) ===
+}
