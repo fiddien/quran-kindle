@@ -29,8 +29,8 @@ class TranslationRenderer(Renderer):
         self.side = round(w * 0.07)
         self.text_top = self.top + h * 0.025
         self.text_bottom = h - h * 0.03
-        # === start near 10 pt on a 6-inch 167-ppi screen; never below about 8 pt ===
-        self.sizes = range(round(w * 0.04), round(w * 0.032) - 1, -1)
+        # === start near 10 pt on a 6-inch 167-ppi screen and shrink until the page's verses fit ===
+        self.sizes = range(round(w * 0.04), round(w * 0.015), -1)
 
     def blocks(self, page) -> list:
         """Surah headings and verses on the page, in reading order."""
@@ -83,23 +83,16 @@ class TranslationRenderer(Renderer):
         return rows
 
     def screens_layout(self, page) -> list:
-        """Rows split into screens, at the largest size that fits (or that paginates least)."""
+        """Rows for one screen, at the largest type size at which the whole page fits."""
         room = self.text_bottom - self.text_top
         for size in self.sizes:
             rows = self.layout(page, size)
             if sum(_height(r) for r in rows) <= room:
-                return [rows]
-        # === too long even at the smallest size: continue on further screens ===
-        screens, current, used = [], [], 0
-        for row in rows:
-            if used + _height(row) > room and current:
-                screens.append(current)
-                current, used = [], 0
-            if row[0] == "space" and not current:
-                continue
-            current.append(row)
-            used += _height(row)
-        return screens + [current]
+                break
+        # === drop a trailing spacer so nothing hangs below the last verse ===
+        while rows and rows[-1][0] == "space":
+            rows.pop()
+        return [rows]
 
     def draw_screen(self, draw, page, rows, index, count):
         italic = ImageFont.truetype(self.italic, round(self.top * 0.4))

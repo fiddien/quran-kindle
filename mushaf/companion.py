@@ -14,7 +14,7 @@ GLOSS_INK = 48
 
 class CompanionRenderer(Renderer):
     def __init__(self, *args, glosses: dict, gloss_font: str, gloss_italic: str,
-                 lines_per_screen: int = 5, gloss_scale: float = 0.04, **kw):
+                 lines_per_screen: int = 5, gloss_scale: float = 0.034, **kw):
         super().__init__(*args, **kw)
         self.lines_per_screen = lines_per_screen
         self.glosses = glosses
@@ -25,7 +25,7 @@ class CompanionRenderer(Renderer):
         self.margin = round(w * 0.04)
         self.width = w - 2 * self.margin
         self.ar_size = round(w * 0.052)
-        # === about 10 pt on a 6-inch 167-ppi screen ===
+        # === about 8.6 pt on a 6-inch 167-ppi screen ===
         self.gloss_size = round(w * gloss_scale)
 
     def parts(self, page: Page) -> list:
@@ -93,8 +93,10 @@ class CompanionRenderer(Renderer):
 
         # === wrap glosses narrower, then shrink them, until the row fits the width ===
         # === as a last resort, shrink the Arabic of a very dense line too ===
+        # === and if even that fails, shrink both further until the row is guaranteed to fit ===
         attempts = [(1.0, f, w) for f in (1.0, 0.92, 0.85, 0.78) for w in (4.5, 3.6, 2.8, 2.2)]
         attempts += [(a, 0.78, 2.2) for a in (0.94, 0.88, 0.82, 0.76, 0.7)]
+        attempts += [(0.7 * f, 0.78 * f, 2.2) for f in (0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5)]
         full = ar
         for ar_scale, font_scale, wrap_em in attempts:
             ar = round(full * ar_scale)
