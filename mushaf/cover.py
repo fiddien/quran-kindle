@@ -1,66 +1,85 @@
-"""Covers for the books, drawn in the mushaf's own vocabulary: frame, bismillah, cartouche."""
+"""Covers for the books: bold shapes that stay recognisable as library thumbnails."""
+import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from .render import INK, PAPER, ink_centered, quantize
+from .render import INK, PAPER, quantize
 
-# === (Arabic title, English title, subtitle) per book ===
-TITLES = {
-    "mushaf": ("المصحف الشريف", "The Noble Qur'an", "Madinah Mushaf"),
-    "translation": ("المصحف الشريف", "The Noble Qur'an", "with the English translation of Saheeh International"),
-    "companion": ("المصحف الشريف", "The Noble Qur'an", "Word by word, in English"),
+ARABIC = "القرآن الكريم"
+ENGLISH = "The Noble Qur'an"
+NBSP = "\u00a0"
+# === (label in the bottom band, subtitle) per book; NBSP keeps a name on one line ===
+BOOKS = {
+    "mushaf": ("MADINAH MUSHAF", "Madinah Mushaf, riwayat Hafs"),
+    "translation": ("WITH TRANSLATION", f"with the English translation of Saheeh{NBSP}International"),
+    "companion": ("WORD BY WORD", "Word by word, in English"),
 }
 
 
-def render_cover(book: str, w: int, h: int, qcf_fonts: Path, amiri: Path, serif: str, italic: str) -> Image.Image:
-    arabic, english, subtitle = TITLES[book]
+def render_cover(book: str, w: int, h: int, qcf_fonts: Path, amiri: Path, serif: str, italic: str,
+                 bold: str) -> Image.Image:
+    label, subtitle = BOOKS[book]
     img = Image.new("L", (w, h), PAPER)
     d = ImageDraw.Draw(img)
 
-    # === double frame, thick outside and thin inside ===
-    m, gap = round(w * 0.05), round(w * 0.015)
-    d.rectangle((m, m, w - m, h - m), outline=INK, width=max(3, round(w * 0.008)))
-    d.rectangle((m + gap, m + gap, w - m - gap, h - m - gap), outline=INK, width=max(1, round(w * 0.002)))
+    # === black bands: the bismillah above, the book's name below ===
+    band = round(h * 0.15)
+    d.rectangle((0, 0, w, band), fill=INK)
+    d.rectangle((0, h - band, w, h), fill=INK)
+    bism = ImageFont.truetype(str(qcf_fonts / "QCF4_Hafs_01_W.woff2"), round(w * 0.085))
+    _ink(d, (w / 2, band * 0.52), "\uf8dd", bism, PAPER)
+    tag = ImageFont.truetype(bold, round(w * 0.07))
+    while tag.getlength(label) > w * 0.86:
+        tag = ImageFont.truetype(bold, tag.size - 2)
+    d.text((w / 2, h - band / 2), label, font=tag, fill=PAPER, anchor="mm")
 
-    # === the bismillah in the mushaf's own calligraphy ===
-    bism = ImageFont.truetype(str(qcf_fonts / "QCF4_Hafs_01_W.woff2"), round(w * 0.075))
-    ink_centered(d, (w / 2, h * 0.17), "\uf8dd", bism)
+    # === the eight-pointed star (khatam) with the Arabic title inside ===
+    cx, cy, r = w / 2, h * 0.43, w * 0.33
+    for radius, width in ((r, max(3, round(w * 0.01))), (r * 0.93, max(1, round(w * 0.003)))):
+        d.polygon(_star(cx, cy, radius), outline=INK, width=width)
+    title = ImageFont.truetype(str(amiri), round(w * 0.13))
+    while _ink_width(title, ARABIC) > r * 1.32:
+        title = ImageFont.truetype(str(amiri), title.size - 2)
+    _ink(d, (cx, cy), ARABIC, title, INK, stroke=max(1, round(w * 0.002)))
 
-    # === the Arabic title in a cartouche, flanked by the surah-header ornaments ===
-    title = ImageFont.truetype(str(amiri), round(w * 0.085))
-    left, top, right, bottom = title.getbbox(arabic, anchor="ls")
-    mid = h * 0.42
-    half_w, half_h = (right - left) / 2 + w * 0.05, (bottom - top) / 2 + w * 0.04
-    box = (w / 2 - half_w, mid - half_h, w / 2 + half_w, mid + half_h)
-    d.rounded_rectangle(box, radius=half_h * 0.6, outline=INK, width=max(2, round(w * 0.005)))
-    inset = w * 0.012
-    d.rounded_rectangle((box[0] + inset, box[1] + inset, box[2] - inset, box[3] - inset),
-                        radius=half_h * 0.6 - inset, outline=INK, width=1)
-    ink_centered(d, (w / 2, mid), arabic, title)
-    caps = ImageFont.truetype(str(qcf_fonts / "QCF4_QBSML.woff2"), round(half_h * 2.0))
-    ink_centered(d, (box[0] - w * 0.01, mid), "\ufaf3", caps, "r")
-    ink_centered(d, (box[2] + w * 0.01, mid), "\ufaf2", caps, "l")
-
-    # === English titles ===
-    d.text((w / 2, h * 0.585), english, font=ImageFont.truetype(serif, round(w * 0.062)), fill=INK, anchor="mm")
-    sub = ImageFont.truetype(italic, round(w * 0.038))
-    lines = _wrap(subtitle, sub, w * 0.7)
-    for i, line in enumerate(lines):
-        d.text((w / 2, h * 0.65 + i * w * 0.05), line, font=sub, fill=64, anchor="mm")
-
-    # === colophon: riwayah and edition ===
-    small = ImageFont.truetype(str(amiri), round(w * 0.045))
-    d.text((w / 2, h * 0.82), "برواية حفص عن عاصم", font=small, fill=64, anchor="mm", direction="rtl")
-    d.text((w / 2, h * 0.875), "King Fahd Complex · 1441 AH", font=ImageFont.truetype(serif, round(w * 0.03)),
-           fill=96, anchor="mm")
+    # === English titles under the star ===
+    d.text((w / 2, h * 0.715), ENGLISH, font=ImageFont.truetype(bold, round(w * 0.065)), fill=INK, anchor="mm")
+    sub = ImageFont.truetype(italic, round(w * 0.036))
+    for i, line in enumerate(_wrap(subtitle, sub, w * 0.8)):
+        d.text((w / 2, h * 0.765 + i * w * 0.048), line.replace(NBSP, " "), font=sub, fill=64, anchor="mm")
     return quantize(img)
 
 
+def _star(cx, cy, r):
+    """Two overlapping squares, drawn as one 16-point outline."""
+    inner = r * math.cos(math.pi / 4) / math.cos(math.pi / 8)
+    points = []
+    for i in range(16):
+        angle = math.pi / 8 * i - math.pi / 2
+        radius = r if i % 2 == 0 else inner
+        points.append((cx + radius * math.cos(angle), cy + radius * math.sin(angle)))
+    return points
+
+
+def _ink(d, xy, text, font, fill, stroke=0):
+    """Draw text centred on its ink; a thin stroke adds weight to a regular face."""
+    left, top, right, bottom = font.getbbox(text, anchor="ls", stroke_width=stroke)
+    x, y = xy
+    d.text((x - (left + right) / 2, y - (top + bottom) / 2), text, font=font, fill=fill, anchor="ls",
+           stroke_width=stroke, stroke_fill=fill)
+
+
+def _ink_width(font, text):
+    left, _, right, _ = font.getbbox(text, anchor="ls")
+    return right - left
+
+
 def _wrap(text, font, width):
+    """Wrap on ordinary spaces only, so NBSP-joined names stay together."""
     lines, current = [], ""
-    for word in text.split():
-        candidate = f"{current} {word}".strip()
+    for word in text.split(" "):
+        candidate = f"{current} {word}".strip(" ")
         if current and font.getlength(candidate) > width:
             lines.append(current)
             current = word
