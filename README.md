@@ -2,10 +2,9 @@
 
 Builds a crisp, easy-to-navigate copy of the **Madinah mushaf** (King Fahd Complex,
 1441 AH, calligraphy by Uthman Taha) for Kindle and other e-readers. Every page keeps
-the printed layout: 604 pages, 15 lines, same line breaks. Your page memory carries over.
+the printed layout: 604 pages, 15 lines, same line breaks.
 
-Each page is rendered at the exact pixel size of your screen in 16 gray levels, so
-the device never rescales it. The book has:
+Each page is rendered at the exact pixel size of your screen in 16 gray levels. The book has:
 
 - a table of contents with all **114 surahs** and **30 juz'**, each with its **2 hizb**;
 - right-to-left page turning;
@@ -18,7 +17,7 @@ the device never rescales it. The book has:
 ## Download
 
 Ready-made books are on the **[latest release](https://github.com/fiddien/quran-kindle/releases/latest)**.
-No GitHub account is needed. Pick the files that match your screen:
+Pick the files that match your screen:
 
 | Files ending in | Screen | Devices |
 |---|---|---|
@@ -27,17 +26,14 @@ No GitHub account is needed. Pick the files that match your screen:
 | `-oasis` | 1264×1680 | Kindle Oasis, Kobo Libra |
 
 Each size comes as two books, `mushaf-…` and `companion-…` (word by word), and each
-book comes as an EPUB and a PDF. See [Put it on the Kindle](#put-it-on-the-kindle)
-for which one to use. For another screen size, [build it yourself](#build).
+book comes as an EPUB and a PDF.
 
 ## Word-by-word companion
 
 A second book shows every mushaf line with an English gloss under each word.
 At readable sizes a page needs two screens (lines 1–8, then 9–15). Both screens
 are labelled with the mushaf page number, so "Go to page 50" can still find
-page 50. Whether your Kindle honours these labels after Amazon's conversion
-needs testing on the device. If it doesn't, the table of contents lists every
-page under its juz'.
+page 50.
 
 ## Build
 
@@ -49,7 +45,7 @@ python -m mushaf --pages 1-3,604              # quick preview PNGs only
 python -m mushaf --text-scale 0.85            # smaller script, more space between lines
 ```
 
-A full build of both books takes about 6 minutes on 4 cores. Devices: `paperwhite` (2021+),
+Devices: `paperwhite` (2021+),
 `paperwhite-old`, `kindle`, `oasis`, `scribe`, `kobo-clara`, `kobo-libra`.
 
 Pushing a tag such as `v1.0.0`, or running the *Build books* workflow by hand with a
@@ -59,14 +55,12 @@ only builds; its files then appear as downloads on that run's page for 7 days.
 
 ## Put it on the Kindle
 
-- **EPUB:** send it with [Send to Kindle](https://www.amazon.com/sendtokindle). Amazon
-  converts it into a full-screen fixed-layout book.
-- **PDF:** copy it over USB into the `documents` folder. It is less smooth than the
-  EPUB but needs no conversion.
+- **EPUB:** send it with [Send to Kindle](https://www.amazon.com/sendtokindle).
+- **PDF:** copy it over USB into the `documents` folder.
 
 ## Sources and licensing
 
-The build downloads two pinned npm packages, checks their hashes, and caches them in `cache/`:
+The build downloads three pinned npm packages:
 
 - [`quran-qcf4`](https://github.com/MohamadHajjRabee/quran-qcf4) for the page layouts
   (MIT) and the KFGQPC QCF4 fonts;
@@ -76,8 +70,6 @@ The build downloads two pinned npm packages, checks their hashes, and caches the
   for the English glosses. This is a dump of quran.com's word-by-word data, so the
   translation's rights rest with its original authors.
 
-The fonts belong to the King Fahd Complex, and this repository does not include them.
+The fonts belong to the King Fahd Complex.
 They may be used only for rendering the Qur'an. The released books contain rendered pages,
-not the fonts, and are shared free of charge for reading the Qur'an. Please don't sell
-them. If you hold rights to any of these sources and object to the releases, open an
-issue and they will be taken down.
+not the fonts, and are shared free of charge for reading the Qur'an.
