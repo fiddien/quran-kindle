@@ -1,0 +1,5 @@
+# === Downloaded sources (fonts are not redistributable) and build outputs ===
+cache/
+out/
+__pycache__/
+*.pyc

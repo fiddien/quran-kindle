@@ -1,0 +1,176 @@
+"""Render mushaf pages to grayscale images sized for a specific e-reader screen."""
+from dataclasses import dataclass
+from functools import lru_cache
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+from .data import Mushaf, Page, arabic_number
+
+INK = 0
+PAPER = 255
+SHORT_LINE = 0.9  # === lines narrower than this share of the text width are centered ===
+
+
+@dataclass(frozen=True)
+class Device:
+    name: str
+    width: int
+    height: int
+
+
+DEVICES = {
+    "paperwhite": Device("Kindle Paperwhite (2021+), 6.8in 300ppi", 1236, 1648),
+    "paperwhite-old": Device("Kindle Paperwhite 3/4, 6in 300ppi", 1072, 1448),
+    "kindle": Device("Kindle Basic (2022+), 6in 300ppi", 1072, 1448),
+    "oasis": Device("Kindle Oasis, 7in 300ppi", 1264, 1680),
+    "scribe": Device("Kindle Scribe, 10.2in 300ppi", 1860, 2480),
+    "kobo-clara": Device("Kobo Clara HD/2E/BW, 6in 300ppi", 1072, 1448),
+    "kobo-libra": Device("Kobo Libra 2/Colour, 7in 300ppi", 1264, 1680),
+}
+
+
+class Renderer:
+    def __init__(self, mushaf: Mushaf, fonts: Path, device: Device, ui_font: str,
+                 text_scale: float = 0.92):
+        self.mushaf = mushaf
+        self.fonts = fonts
+        self.device = device
+        self.ui_font = ui_font
+        w, h = device.width, device.height
+        # === Smaller text means narrower lines, so the side margins grow with it and ===
+        # === the fixed 15-line pitch leaves more white space between lines. ===
+        self.text_width = round(w * 0.95 * text_scale)
+        self.margin = (w - self.text_width) // 2
+        self.top = round(h * 0.045)  # === running header band ===
+        self.bottom = round(h * 0.037)  # === page-number band ===
+        self.pitch = (h - self.top - self.bottom) / 15
+        # === QCF4 lines are about 16.1 em wide; fit the median line to the text width. ===
+        self.size = round(self.text_width / 16.2)
+
+    @lru_cache(maxsize=None)
+    def font(self, name: str, size: int) -> ImageFont.FreeTypeFont:
+        path = self.fonts / f"{name}_W.woff2"
+        if not path.exists():
+            path = self.fonts / f"{name}.woff2"
+        return ImageFont.truetype(
+            str(path),
+            size,
+            layout_engine=ImageFont.Layout.BASIC,
+        )
+
+    @lru_cache(maxsize=None)
+    def ui(self, size: int) -> ImageFont.FreeTypeFont:
+        return ImageFont.truetype(self.ui_font, size)
+
+    # === page ===
+
+    def render(self, page: Page) -> Image.Image:
+        img = Image.new("L", (self.device.width, self.device.height), PAPER)
+        draw = ImageDraw.Draw(img)
+        self._running_header(draw, page)
+        if len(page.lines) == 15:
+            slots = [self.top + i * self.pitch for i in range(15)]
+        else:  # === the two opening pages: center the short block vertically ===
+            n = len(page.lines)
+            start = self.top + (15 - n) * self.pitch / 2
+            slots = [start + i * self.pitch for i in range(n)]
+        opening = page.number <= 2
+        for line, y in zip(page.lines, slots):
+            kind = line["words"][0]["type"]
+            if kind == "surah_header":
+                self._surah_banner(draw, line["words"][0], y)
+            elif kind == "bismillah":
+                word = line["words"][0]
+                font = self.font(word["font"], round(self.size * 0.82))
+                ink_centered(draw, (self.device.width / 2, y + self.pitch * 0.42), word["char"], font)
+            else:
+                self._line(draw, line["words"], y, centered=opening)
+        self._page_number(draw, page.number)
+        return quantize(img)
+
+    def _baseline(self, y: float) -> float:
+        # === QCF4 ink sits roughly 0.55 em above and 0.4 em below the baseline. ===
+        return y + self.pitch * 0.58
+
+    def _line(self, draw, words, y, centered=False):
+        size = self.size
+        widths = [self.font(w["font"], size).getlength(w["char"]) for w in words]
+        natural = sum(widths)
+        if natural > self.text_width:  # === rare wide line: shrink it to fit ===
+            size = int(size * self.text_width / natural)
+            widths = [self.font(w["font"], size).getlength(w["char"]) for w in words]
+            natural = sum(widths)
+        if centered or natural < self.text_width * SHORT_LINE or len(words) == 1:
+            gap = size * 0.12 if len(words) > 1 else 0
+            span = natural + gap * (len(words) - 1)
+            x = self.device.width - (self.device.width - span) / 2
+        else:
+            gap = (self.text_width - natural) / (len(words) - 1)
+            x = self.device.width - self.margin
+        base = self._baseline(y)
+        # === Arabic runs right to left: place each glyph leftwards from the right edge. ===
+        for word, width in zip(words, widths):
+            x -= width
+            draw.text((x, base), word["char"], font=self.font(word["font"], size),
+                      fill=INK, anchor="ls")
+            x -= gap
+
+    def _surah_banner(self, draw, word, y):
+        """A framed title band with ornamental end caps, like the printed mushaf."""
+        m = self.margin
+        right = self.device.width - m
+        h = self.pitch
+        top, bottom = y + h * 0.1, y + h * 0.9
+        draw.rectangle((m, top, right, bottom), outline=INK, width=max(2, round(h * 0.03)))
+        inset = h * 0.08
+        draw.rectangle((m + inset, top + inset, right - inset, bottom - inset),
+                       outline=INK, width=1)
+        cap = self.font("QCF4_QBSML", round(h * 0.75))
+        mid = (top + bottom) / 2
+        ink_centered(draw, (m + inset * 2, mid), "\ufae4", cap, "l")
+        ink_centered(draw, (right - inset * 2, mid), "\ufae5", cap, "r")
+        title = self.font("QCF4_QBSML", round(h * 0.55))
+        ink_centered(draw, (self.device.width / 2, mid), word["char"], title)
+
+    def _running_header(self, draw, page: Page):
+        y = self.top * 0.55
+        h = self.top * 0.9
+        # === Surah name (compact style b) on the left, juz' label on the right. ===
+        name = self.font("QCF4_QBSML", round(h * 0.62))
+        ink_centered(draw, (self.margin, y), chr(0xF1F8 + page.surah - 1), name, "l")
+        juz = self.font("QCF4_QBSML", round(h * 0.9))
+        ink_centered(draw, (self.device.width - self.margin, y), chr(0xF2D0 + page.juz - 1), juz, "r")
+        label = f"الحزب {arabic_number(page.hizb)}"
+        draw.text((self.device.width / 2, y), label, font=self.ui(round(h * 0.38)),
+                  fill=96, anchor="mm", direction="rtl")
+        rule_y = self.top - 3
+        draw.line((self.margin, rule_y, self.device.width - self.margin, rule_y), fill=160, width=1)
+
+    def _page_number(self, draw, n: int):
+        y = self.device.height - self.bottom / 2
+        draw.text((self.device.width / 2, y), arabic_number(n),
+                  font=self.ui(round(self.bottom * 0.5)), fill=64, anchor="mm")
+
+
+def quantize(img: Image.Image) -> Image.Image:
+    """Snap to the 16 gray levels e-ink panels show, so edges don't shimmer."""
+    return img.point(lambda v: min(255, round(v / 17) * 17))
+
+
+def ink_centered(draw, xy, char, font, align="m"):
+    """Draw a glyph so its visible ink (not its font box) is centered on xy.
+
+    QCF glyphs carry large, uneven ascent/descent boxes, so metric-based
+    anchors leave titles visibly off-center.
+    """
+    x, y = xy
+    left, top, right, bottom = font.getbbox(char, anchor="ls")
+    dy = y - (top + bottom) / 2
+    if align == "l":
+        dx = x - left
+    elif align == "r":
+        dx = x - right
+    else:
+        dx = x - (left + right) / 2
+    draw.text((dx, dy), char, font=font, fill=INK, anchor="ls")
