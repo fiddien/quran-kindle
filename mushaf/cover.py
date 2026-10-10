@@ -53,11 +53,15 @@ def render_cover(book: str, w: int, h: int, qcf_fonts: Path, amiri: Path, serif:
     return quantize(img)
 
 
-def _ink(d, xy, text, font, fill):
-    """Draw text centred on its ink rather than its font box."""
-    left, top, right, bottom = font.getbbox(text, anchor="ls")
+def _ink(d, xy, text, font, fill, outline=0, paper=255):
+    """Draw text centred on its ink rather than its font box; outline > 0 draws hollow letters."""
+    left, top, right, bottom = font.getbbox(text, anchor="ls", stroke_width=outline)
     x, y = xy
-    d.text((x - (left + right) / 2, y - (top + bottom) / 2), text, font=font, fill=fill, anchor="ls")
+    if outline:
+        d.text((x - (left + right) / 2, y - (top + bottom) / 2), text, font=font, fill=paper, anchor="ls",
+               stroke_width=outline, stroke_fill=fill)
+    else:
+        d.text((x - (left + right) / 2, y - (top + bottom) / 2), text, font=font, fill=fill, anchor="ls")
 
 
 def _wrap(text, font, width):
@@ -306,13 +310,14 @@ def _supersampled(w, h, bg, paint):
 
 
 def _title_block(d, w, h, cy, amiri, book, ink=0, sub=90, english=True, title_font=None, title_text=ARABIC,
-                 english_title=True, measure=0.62):
+                 english_title=True, measure=0.62, outline=0, title_ink=None, paper=255):
     title = ImageFont.truetype(str(title_font or amiri), round(w * 0.1))
     # === display faces differ in width: fit the title to the same measure ===
     for _ in range(3):
         left, _, right, _ = title.getbbox(title_text, anchor="ls")
         title = ImageFont.truetype(str(title_font or amiri), max(8, round(title.size * w * measure / (right - left))))
-    _ink(d, (w / 2, cy - w * 0.02), title_text, title, ink)
+    _ink(d, (w / 2, cy - w * 0.02), title_text, title, ink if title_ink is None else title_ink,
+         outline=outline, paper=paper)
     if english:
         if english_title:
             f = ImageFont.truetype(SANS_BOLD, round(w * 0.04))
@@ -405,7 +410,8 @@ def _night(book, w, h, qcf_fonts, amiri, *_):
     return quantize(img)
 
 
-def _rosette(book, w, h, qcf_fonts, amiri, *_, title_font=None, title_text=ARABIC):
+def _rosette(book, w, h, qcf_fonts, amiri, *_, title_font=None, title_text=ARABIC, measure=0.7,
+             title_ink=None, outline=0):
     """Concentric stars, each ring turned half a step: a ceiling medallion."""
     import math
 
@@ -424,7 +430,7 @@ def _rosette(book, w, h, qcf_fonts, amiri, *_, title_font=None, title_text=ARABI
     d.rectangle((0, h * 0.72, w, h), fill=245)
     # === the calligraphy alone carries the title; the book's name sits small beneath it ===
     _title_block(d, w, h, h * 0.82, amiri, book, title_font=title_font, title_text=title_text,
-                 english_title=False, measure=0.7)
+                 english_title=False, measure=measure, title_ink=title_ink, outline=outline, paper=245)
     return quantize(img)
 
 
