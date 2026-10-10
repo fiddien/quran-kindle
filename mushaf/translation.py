@@ -383,7 +383,7 @@ class TranslationRenderer(Renderer):
             y += _height(row)
 
     def _topic_lines(self, names: list, font, width: float) -> list:
-        """A verse's topics wrapped into the column, as lines of (x, text, target);
+        """A verse's topics wrapped into the column, as lines of (x, text, target, font);
         each word of a name links to the name's index entry."""
         lines, line, x = [], [], 0.0
         space = font.getlength(" ")
@@ -391,14 +391,17 @@ class TranslationRenderer(Renderer):
             target = self.entries.get(name)
             words = name.split() + (["·"] if i < len(names) - 1 else [])
             for j, word in enumerate(words):
-                w = font.getlength(word)
+                pieces = [(text, run_font) for text, run_font, _, _ in self._runs(word, font, TOPIC_INK)]
+                w = sum(run_font.getlength(text) for text, run_font in pieces)
                 separator = j == len(words) - 1 and i < len(names) - 1
                 # === a separating dot stays at the end of its line, never opens the next ===
                 if line and x + w > width and not separator:
                     lines.append(line)
                     line, x = [], 0.0
-                line.append((x, word, None if separator else target))
-                x += w + space
+                for text, run_font in pieces:
+                    line.append((x, text, None if separator else target, run_font))
+                    x += run_font.getlength(text)
+                x += space
         if line:
             lines.append(line)
         return [(font, ln) for ln in lines]
@@ -406,9 +409,9 @@ class TranslationRenderer(Renderer):
     def _draw_side(self, draw, x, y, lines, height):
         """A verse's topics in the right-hand column, with a hairline to their left."""
         draw.line((x - 6, y + height * 0.15, x - 6, y + height * len(lines)), fill=200, width=1)
-        for font, items in lines:
+        for _, items in lines:
             base = y + height * 0.8
-            for dx, text, target in items:
+            for dx, text, target, font in items:
                 draw.text((x + dx, base), text, font=font, fill=TOPIC_INK, anchor="ls")
                 if target and hasattr(draw, "link"):
                     draw.link((x + dx - 1, y, x + dx + font.getlength(text) + 1, y + height), target)
