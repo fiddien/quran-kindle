@@ -90,10 +90,11 @@ def to_html(ops, is_text_font=lambda family: True) -> tuple:
             family = font_family(font)
             chars.setdefault(family, set()).update(text)
             dir_attr = ' dir="rtl"' if direction == "rtl" else ""
+            # === trailing space = word boundary, so highlights don't snap to whole lines ===
             out.append(
                 f'<span{dir_attr} style="left:{x:.1f}px;top:{y - ascent:.1f}px;'
                 f"font:{font.size}px/{ascent + descent}px '{family}';color:{_gray(fill)}\">"
-                f"{escape(text)}</span>"
+                f"{escape(text)} </span>"
             )
         elif op[0] == "line":
             _, (x0, y0, x1, y1), fill, width = op
