@@ -106,3 +106,48 @@ def load(qcf4: Path, meta: Path) -> Mushaf:
         page.hizb = max(h.number for h in hizb if h.page <= page.number)
 
     return Mushaf(chapters, pages, juz, hizb, quarters)
+
+
+SAJDAH = "#1969"  # === qcf4's code for the prostration mark ۩, laid out as a word ===
+# === Glyph pairs that quran.com treats as one word (e.g. بَعْدَمَا) but the mushaf splits. ===
+JOINED = {("بَعْدَ", "مَا"), ("إِلْ", "يَاسِينَ")}
+
+
+def load_glosses(mushaf: Mushaf, wbw: Path) -> dict:
+    """Map (verse_key, position) of every mushaf word to its English gloss.
+
+    The second glyph of a JOINED pair maps to "" because the first carries the
+    gloss for both; the sajdah mark maps to a short note.
+    """
+    source = {}
+    for page in json.loads((wbw / "data.json").read_text()):
+        for ayah in page["ayahs"] or []:
+            for w in ayah["words"] or []:
+                if w and w["char_type_name"] == "word":
+                    source.setdefault(w["parentAyahVerseKey"], []).append(w["translation"]["text"])
+
+    verses = {}
+    for page in mushaf.pages:
+        for line in page.lines:
+            for w in line["words"]:
+                if w["type"] == "word":
+                    verses.setdefault(w["verse_key"], []).append(w)
+
+    glosses = {}
+    for key, words in verses.items():
+        texts = source[key]
+        split = sum(w["text"] != SAJDAH for w in words) > len(texts)
+        i = 0
+        for j, w in enumerate(words):
+            if w["text"] == SAJDAH:
+                glosses[(key, w["position"])] = "(prostration)"
+                continue
+            prev = words[j - 1]["text"] if j else None
+            if split and (prev, w["text"]) in JOINED:
+                glosses[(key, w["position"])] = ""
+                continue
+            glosses[(key, w["position"])] = texts[i]
+            i += 1
+        if i != len(texts):
+            raise RuntimeError(f"word-by-word data does not line up for {key}")
+    return glosses

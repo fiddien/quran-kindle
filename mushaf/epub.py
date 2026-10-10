@@ -1,12 +1,15 @@
-"""Package rendered pages as a fixed-layout, right-to-left EPUB 3.
+"""Package rendered screens as a fixed-layout, right-to-left EPUB 3.
 
-Spine position N is mushaf page N (there is no separate cover page), so the
-reader's "Go to page" lands on the same page as the printed mushaf. The
-Kindle-specific metadata mirrors what Kindle Comic Converter emits, which
-Amazon's Send to Kindle turns into a full-screen fixed-layout book.
+Every screen that starts a mushaf page carries that page's number as its
+label (page-list and an inline pagebreak), so "Go to page N" can land on
+mushaf page N even when a page spans several screens. In the mushaf itself
+spine position N is page N, with no separate cover. The Kindle-specific
+metadata mirrors what Kindle Comic Converter emits, which Amazon's Send to
+Kindle turns into a full-screen fixed-layout book.
 """
 import uuid
 import zipfile
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
@@ -14,20 +17,33 @@ from pathlib import Path
 from .data import Mushaf, arabic_number
 
 
-def _page_xhtml(n: int, w: int, h: int) -> str:
+@dataclass
+class Screen:
+    stem: str  # === file name without extension, e.g. p050 or c050b ===
+    page: int  # === mushaf page shown on this screen ===
+    first: bool  # === True for the screen where the page begins ===
+
+
+def _page_xhtml(screen: Screen, w: int, h: int) -> str:
+    mark = (f'<span epub:type="pagebreak" id="page{screen.page}" title="{screen.page}" role="doc-pagebreak"></span>'
+            if screen.first else "")
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ar" dir="rtl">
-<head><title>{n}</title><meta name="viewport" content="width={w}, height={h}"/>
+<head><title>{screen.page}</title><meta name="viewport" content="width={w}, height={h}"/>
 <style>html,body{{margin:0;padding:0}} img{{position:absolute;top:0;left:0;width:{w}px;height:{h}px}}</style>
 </head>
-<body><div><img src="../img/p{n:03d}.png" alt="{n}"/></div></body>
+<body><div>{mark}<img src="../img/{screen.stem}.png" alt="{screen.page}"/></div></body>
 </html>
 """
 
 
-def toc_tree(mushaf: Mushaf) -> list:
-    """(label, page, children) entries shared by the EPUB and PDF outlines."""
+def toc_tree(mushaf: Mushaf, pages: bool = False) -> list:
+    """(label, page, children) entries shared by the EPUB and PDF outlines.
+
+    With pages=True a third group lists every page under its juz', for books
+    whose screens don't map one-to-one onto mushaf pages.
+    """
     surahs = [
         (f"{c.id}. {c.name} · {c.name_arabic}", c.page, [])
         for c in mushaf.chapters
@@ -40,51 +56,60 @@ def toc_tree(mushaf: Mushaf) -> list:
             if (h.number + 1) // 2 == j.number
         ]
         juz.append((f"Juz' {j.number} · الجزء {arabic_number(j.number)}", j.page, hizb))
-    return [
+    tree = [
         ("Surahs · السور", 1, surahs),
         ("Juz' & Hizb · الأجزاء والأحزاب", 1, juz),
     ]
+    if pages:
+        bounds = [j.page for j in mushaf.juz] + [len(mushaf.pages) + 1]
+        tree.append(("Pages · الصفحات", 1, [
+            (f"Juz' {j.number} · pages {bounds[i]}–{bounds[i + 1] - 1}", j.page,
+             [(f"Page {n}", n, []) for n in range(bounds[i], bounds[i + 1])])
+            for i, j in enumerate(mushaf.juz)
+        ]))
+    return tree
 
 
-def _nav_ol(entries, depth=0) -> str:
+def _nav_ol(entries, href, depth=0) -> str:
     pad = "  " * (depth + 2)
     out = [f"{pad}<ol>"]
     for label, page, children in entries:
-        out.append(f'{pad}  <li><a href="text/p{page:03d}.xhtml">{escape(label)}</a>')
+        out.append(f'{pad}  <li><a href="{href[page]}">{escape(label)}</a>')
         if children:
-            out.append(_nav_ol(children, depth + 1))
+            out.append(_nav_ol(children, href, depth + 1))
         out.append(f"{pad}  </li>")
     out.append(f"{pad}</ol>")
     return "\n".join(out)
 
 
-def _ncx_points(entries, counter) -> str:
+def _ncx_points(entries, href, counter) -> str:
     out = []
     for label, page, children in entries:
         counter[0] += 1
         out.append(
             f'<navPoint id="n{counter[0]}"><navLabel><text>{escape(label)}</text></navLabel>'
-            f'<content src="text/p{page:03d}.xhtml"/>'
+            f'<content src="{href[page]}"/>'
         )
-        out.append(_ncx_points(children, counter))
+        out.append(_ncx_points(children, href, counter))
         out.append("</navPoint>")
     return "".join(out)
 
 
-def write_epub(mushaf: Mushaf, images: Path, out: Path, w: int, h: int, title: str) -> None:
-    pages = range(1, len(mushaf.pages) + 1)
+def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: int,
+               title: str) -> None:
     book_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, 'quran-kindle/' + title)}"
     modified = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    tree = toc_tree(mushaf)
+    href = {s.page: f"text/{s.stem}.xhtml" for s in reversed(screens)}
+    firsts = [s for s in screens if s.first]
 
     manifest = ['<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>',
                 '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>']
     spine = []
-    for n in pages:
-        props = ' properties="cover-image"' if n == 1 else ""
-        manifest.append(f'<item id="i{n:03d}" href="img/p{n:03d}.png" media-type="image/png"{props}/>')
-        manifest.append(f'<item id="p{n:03d}" href="text/p{n:03d}.xhtml" media-type="application/xhtml+xml"/>')
-        spine.append(f'<itemref idref="p{n:03d}"/>')
+    for i, s in enumerate(screens):
+        props = ' properties="cover-image"' if i == 0 else ""
+        manifest.append(f'<item id="i{s.stem}" href="img/{s.stem}.png" media-type="image/png"{props}/>')
+        manifest.append(f'<item id="{s.stem}" href="text/{s.stem}.xhtml" media-type="application/xhtml+xml"/>')
+        spine.append(f'<itemref idref="{s.stem}"/>')
 
     opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ar" dir="rtl">
@@ -97,7 +122,7 @@ def write_epub(mushaf: Mushaf, images: Path, out: Path, w: int, h: int, title: s
 <meta property="rendition:layout">pre-paginated</meta>
 <meta property="rendition:spread">none</meta>
 <meta property="rendition:orientation">portrait</meta>
-<meta name="cover" content="i001"/>
+<meta name="cover" content="i{screens[0].stem}"/>
 <meta name="fixed-layout" content="true"/>
 <meta name="original-resolution" content="{w}x{h}"/>
 <meta name="book-type" content="comic"/>
@@ -119,7 +144,7 @@ def write_epub(mushaf: Mushaf, images: Path, out: Path, w: int, h: int, title: s
 """
 
     page_list = "\n".join(
-        f'      <li><a href="text/p{n:03d}.xhtml">{n}</a></li>' for n in pages
+        f'      <li><a href="text/{s.stem}.xhtml#page{s.page}">{s.page}</a></li>' for s in firsts
     )
     nav = f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
@@ -127,13 +152,13 @@ def write_epub(mushaf: Mushaf, images: Path, out: Path, w: int, h: int, title: s
 <head><title>{escape(title)}</title></head>
 <body>
   <nav epub:type="toc" id="toc"><h1>{escape(title)}</h1>
-{_nav_ol(tree)}
+{_nav_ol(tree, href)}
   </nav>
   <nav epub:type="page-list" hidden=""><ol>
 {page_list}
   </ol></nav>
   <nav epub:type="landmarks" hidden=""><ol>
-    <li><a epub:type="bodymatter" href="text/p001.xhtml">Al-Fatihah</a></li>
+    <li><a epub:type="bodymatter" href="{href[1]}">Al-Fatihah</a></li>
   </ol></nav>
 </body>
 </html>
@@ -142,8 +167,8 @@ def write_epub(mushaf: Mushaf, images: Path, out: Path, w: int, h: int, title: s
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1" xml:lang="ar">
 <head><meta name="dtb:uid" content="{book_id}"/><meta name="dtb:depth" content="3"/></head>
 <docTitle><text>{escape(title)}</text></docTitle>
-<navMap>{_ncx_points(tree, [0])}</navMap>
-<pageList>{"".join(f'<pageTarget id="pg{n}" type="normal" value="{n}"><navLabel><text>{n}</text></navLabel><content src="text/p{n:03d}.xhtml"/></pageTarget>' for n in pages)}</pageList>
+<navMap>{_ncx_points(tree, href, [0])}</navMap>
+<pageList>{"".join(f'<pageTarget id="pg{s.page}" type="normal" value="{s.page}"><navLabel><text>{s.page}</text></navLabel><content src="text/{s.stem}.xhtml#page{s.page}"/></pageTarget>' for s in firsts)}</pageList>
 </ncx>
 """
     container = """<?xml version="1.0" encoding="UTF-8"?>
@@ -157,7 +182,7 @@ def write_epub(mushaf: Mushaf, images: Path, out: Path, w: int, h: int, title: s
         z.writestr("OEBPS/content.opf", opf, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/nav.xhtml", nav, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/toc.ncx", ncx, zipfile.ZIP_DEFLATED)
-        for n in pages:
-            z.writestr(f"OEBPS/text/p{n:03d}.xhtml", _page_xhtml(n, w, h), zipfile.ZIP_DEFLATED)
+        for s in screens:
+            z.writestr(f"OEBPS/text/{s.stem}.xhtml", _page_xhtml(s, w, h), zipfile.ZIP_DEFLATED)
             # === PNGs are already compressed; storing them keeps the build fast. ===
-            z.write(images / f"p{n:03d}.png", f"OEBPS/img/p{n:03d}.png", zipfile.ZIP_STORED)
+            z.write(images / f"{s.stem}.png", f"OEBPS/img/{s.stem}.png", zipfile.ZIP_STORED)

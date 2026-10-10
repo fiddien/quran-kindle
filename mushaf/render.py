@@ -68,7 +68,7 @@ class Renderer:
     def render(self, page: Page) -> Image.Image:
         img = Image.new("L", (self.device.width, self.device.height), PAPER)
         draw = ImageDraw.Draw(img)
-        self._running_header(draw, page)
+        self.frame(draw, page)
         if len(page.lines) == 15:
             slots = [self.top + i * self.pitch for i in range(15)]
         else:  # === the two opening pages: center the short block vertically ===
@@ -79,7 +79,7 @@ class Renderer:
         for line, y in zip(page.lines, slots):
             kind = line["words"][0]["type"]
             if kind == "surah_header":
-                self._surah_banner(draw, line["words"][0], y)
+                self.surah_banner(draw, line["words"][0], y, self.pitch)
             elif kind == "bismillah":
                 word = line["words"][0]
                 font = self.font(word["font"], round(self.size * 0.82))
@@ -115,11 +115,10 @@ class Renderer:
                       fill=INK, anchor="ls")
             x -= gap
 
-    def _surah_banner(self, draw, word, y):
+    def surah_banner(self, draw, word, y, h):
         """A framed title band with ornamental end caps, like the printed mushaf."""
         m = self.margin
         right = self.device.width - m
-        h = self.pitch
         top, bottom = y + h * 0.1, y + h * 0.9
         draw.rectangle((m, top, right, bottom), outline=INK, width=max(2, round(h * 0.03)))
         inset = h * 0.08
@@ -132,24 +131,46 @@ class Renderer:
         title = self.font("QCF4_QBSML", round(h * 0.55))
         ink_centered(draw, (self.device.width / 2, mid), word["char"], title)
 
-    def _running_header(self, draw, page: Page):
+    # === frame: spine shadow and running header ===
+
+    def frame(self, draw, page: Page, center=None):
+        """Mark which side of the open mushaf this page sits on.
+
+        Odd pages are right-hand pages: the binding is on their left, so the
+        spine shadow runs down the left edge and the page number sits in the
+        outer (right) corner. Even pages mirror this.
+        """
+        w, h = self.device.width, self.device.height
+        right_hand = page.number % 2 == 1
+        shadow = round(self.margin * 0.45)
+        for i in range(shadow):
+            # === darkest at the binding, fading quadratically into the paper ===
+            gray = round(PAPER - 64 * (1 - i / shadow) ** 2)
+            x = i if right_hand else w - 1 - i
+            draw.line((x, 0, x, h), fill=gray)
+
         y = self.top * 0.55
-        h = self.top * 0.9
-        # === Surah name (compact style b) on the left, juz' label on the right. ===
-        name = self.font("QCF4_QBSML", round(h * 0.62))
-        ink_centered(draw, (self.margin, y), chr(0xF1F8 + page.surah - 1), name, "l")
-        juz = self.font("QCF4_QBSML", round(h * 0.9))
-        juz_char = chr(0xF2D0 + page.juz - 1)
-        right = self.device.width - self.margin
-        ink_centered(draw, (right, y), juz_char, juz, "r")
-        # === Hizb sits just left of the juz' label; the page number takes the center. ===
-        left, _, rgt, _ = juz.getbbox(juz_char, anchor="ls")
-        draw.text((right - (rgt - left) - h * 0.3, y), f"الحزب {arabic_number(page.hizb)}",
-                  font=self.ui(round(h * 0.34)), fill=96, anchor="rm", direction="rtl")
-        draw.text((self.device.width / 2, y), arabic_number(page.number),
-                  font=self.ui(round(h * 0.5)), fill=INK, anchor="mm")
+        band = self.top * 0.9
+        inner_x = self.margin if right_hand else w - self.margin
+        outer_x = w - self.margin if right_hand else self.margin
+        number = self.ui(round(band * 0.55))
+        draw.text((outer_x, y), arabic_number(page.number), font=number, fill=INK,
+                  anchor="rm" if right_hand else "lm")
+        name = self.font("QCF4_QBSML", round(band * 0.62))
+        ink_centered(draw, (inner_x, y), chr(0xF1F8 + page.surah - 1), name,
+                     "l" if right_hand else "r")
+        if center is None:
+            # === juz' label with the hizb beside it, both centered between the corners ===
+            juz = self.font("QCF4_QBSML", round(band * 0.9))
+            juz_char = chr(0xF2D0 + page.juz - 1)
+            left, _, right, _ = juz.getbbox(juz_char, anchor="ls")
+            ink_centered(draw, (w / 2 + band * 0.15, y), juz_char, juz, "l")
+            draw.text((w / 2 - band * 0.15, y), f"الحزب {arabic_number(page.hizb)}",
+                      font=self.ui(round(band * 0.34)), fill=96, anchor="rm", direction="rtl")
+        else:
+            center(draw, (w / 2, y), band)
         rule_y = self.top - 3
-        draw.line((self.margin, rule_y, right, rule_y), fill=160, width=1)
+        draw.line((self.margin, rule_y, w - self.margin, rule_y), fill=160, width=1)
 
 
 def quantize(img: Image.Image) -> Image.Image:
