@@ -305,17 +305,23 @@ def _supersampled(w, h, bg, paint):
     return big.resize((w, h), Image.LANCZOS)
 
 
-def _title_block(d, w, h, cy, amiri, book, ink=0, sub=90, english=True):
-    title = ImageFont.truetype(str(amiri), round(w * 0.1))
-    _ink(d, (w / 2, cy), ARABIC, title, ink)
+def _title_block(d, w, h, cy, amiri, book, ink=0, sub=90, english=True, title_font=None, title_text=ARABIC,
+                 english_title=True, measure=0.62):
+    title = ImageFont.truetype(str(title_font or amiri), round(w * 0.1))
+    # === display faces differ in width: fit the title to the same measure ===
+    for _ in range(3):
+        left, _, right, _ = title.getbbox(title_text, anchor="ls")
+        title = ImageFont.truetype(str(title_font or amiri), max(8, round(title.size * w * measure / (right - left))))
+    _ink(d, (w / 2, cy - w * 0.02), title_text, title, ink)
     if english:
-        f = ImageFont.truetype(SANS_BOLD, round(w * 0.04))
-        _spaced_simple(d, (w / 2, cy + w * 0.11), "THE NOBLE QUR'AN", f, ink, 0.15)
+        if english_title:
+            f = ImageFont.truetype(SANS_BOLD, round(w * 0.04))
+            _spaced_simple(d, (w / 2, cy + w * 0.11), "THE NOBLE QUR'AN", f, ink, 0.15)
         small = ImageFont.truetype(SANS, round(w * 0.026))
         name = BOOKS[book].upper().replace(chr(0xA0), " ")
         while small.getlength(name) > w * 0.6 and small.size > 8:
             small = ImageFont.truetype(SANS, small.size - 1)
-        d.text((w / 2, cy + w * 0.17), name, font=small, fill=sub, anchor="mm")
+        d.text((w / 2, cy + (w * 0.17 if english_title else w * 0.12)), name, font=small, fill=sub, anchor="mm")
 
 
 def _spaced_simple(d, xy, text, font, fill, tracking):
@@ -399,7 +405,7 @@ def _night(book, w, h, qcf_fonts, amiri, *_):
     return quantize(img)
 
 
-def _rosette(book, w, h, qcf_fonts, amiri, *_):
+def _rosette(book, w, h, qcf_fonts, amiri, *_, title_font=None, title_text=ARABIC):
     """Concentric stars, each ring turned half a step: a ceiling medallion."""
     import math
 
@@ -415,8 +421,10 @@ def _rosette(book, w, h, qcf_fonts, amiri, *_):
     d = ImageDraw.Draw(img)
     r = w * 0.05
     d.polygon(_star_pts(w / 2, h * 0.4, r * 1.2), fill=40)
-    d.rectangle((0, h * 0.74, w, h), fill=245)
-    _title_block(d, w, h, h * 0.8, amiri, book)
+    d.rectangle((0, h * 0.72, w, h), fill=245)
+    # === the calligraphy alone carries the title; the book's name sits small beneath it ===
+    _title_block(d, w, h, h * 0.82, amiri, book, title_font=title_font, title_text=title_text,
+                 english_title=False, measure=0.7)
     return quantize(img)
 
 
