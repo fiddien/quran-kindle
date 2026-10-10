@@ -83,6 +83,8 @@ def main(argv=None):
     p.add_argument("--out", type=Path, default=Path("out"))
     p.add_argument("--text-scale", type=float, default=0.85,
                    help="mushaf script size relative to full width; lower = more space between lines")
+    p.add_argument("--script-scale", type=float, default=1.0,
+                   help="script size within the same line width; below 1 widens the word spacing")
     p.add_argument("--pdf-footer", type=float, default=0.0,
                    help="shorten text-PDF pages by this share of the screen height (default: full height)")
     p.add_argument("--ui-font", help="TTF with Arabic glyphs for header/page numbers")
@@ -104,7 +106,7 @@ def main(argv=None):
             # === experimental: real text instead of page images ===
             qcf4 = sources.fetch("quran-qcf4", a.cache)
             mushaf = load(qcf4, sources.fetch("quran-meta", a.cache))
-            renderer = Renderer(mushaf, qcf4 / "fonts-woff2", device, ui_font, a.text_scale)
+            renderer = Renderer(mushaf, qcf4 / "fonts-woff2", device, ui_font, a.text_scale, a.script_scale)
             suffix = "-sample" if a.pages else ""
             out = a.out / a.device / f"mushaf-text-{a.device}{suffix}.epub"
             out.parent.mkdir(parents=True, exist_ok=True)
@@ -116,7 +118,7 @@ def main(argv=None):
             if "pdf" in a.formats:
                 # === optionally shorter, to leave room below the page for a reader's progress bar ===
                 short = Device(device.name, device.width, round(device.height * (1 - a.pdf_footer)))
-                pdf_renderer = Renderer(mushaf, qcf4 / "fonts-woff2", short, ui_font, a.text_scale)
+                pdf_renderer = Renderer(mushaf, qcf4 / "fonts-woff2", short, ui_font, a.text_scale, a.script_scale)
                 textbook.build_pdf(pdf_renderer, out.with_suffix(".pdf"), toc_tree(mushaf), TITLES[book],
                                    a.cache / "ttf", pages=sample)
                 print(f"  wrote {out.with_suffix('.pdf')}")

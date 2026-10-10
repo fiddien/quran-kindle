@@ -34,7 +34,7 @@ DEVICES = {
 
 class Renderer:
     def __init__(self, mushaf: Mushaf, fonts: Path, device: Device, ui_font: str,
-                 text_scale: float = 0.85):
+                 text_scale: float = 0.85, script_scale: float = 1.0):
         self.mushaf = mushaf
         self.fonts = fonts
         self.device = device
@@ -47,7 +47,9 @@ class Renderer:
         self.top = round(h * 0.045)  # === running header band ===
         self.bottom = round(h * 0.012)  # === just enough to keep descenders off the edge ===
         # === QCF4 lines are about 16.1 em wide; fit the median line to the text width. ===
-        self.size = round(self.text_width / 16.2)
+        # === script_scale < 1 sets a smaller script in the same lines: words spread a little wider ===
+        self.script_scale = script_scale
+        self.size = round(self.text_width / 16.2 * script_scale)
         # === start the lines low enough that the tallest first-line marks clear the header rule ===
         reach = self._tallest_first_line()
         pad = self.size * 0.12
@@ -120,7 +122,7 @@ class Renderer:
             size = int(size * self.text_width / natural)
             widths = [self.font(w["font"], size).getlength(w["char"]) for w in words]
             natural = sum(widths)
-        if centered or natural < self.text_width * SHORT_LINE or len(words) == 1:
+        if centered or natural < self.text_width * SHORT_LINE * self.script_scale or len(words) == 1:
             gap = size * 0.12 if len(words) > 1 else 0
             span = natural + gap * (len(words) - 1)
             x = self.device.width - (self.device.width - span) / 2
