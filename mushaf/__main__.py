@@ -103,10 +103,12 @@ def main(argv=None):
             qcf4 = sources.fetch("quran-qcf4", a.cache)
             mushaf = load(qcf4, sources.fetch("quran-meta", a.cache))
             renderer = Renderer(mushaf, qcf4 / "fonts-woff2", device, ui_font, a.text_scale)
-            out = a.out / a.device / f"mushaf-text-{a.device}.epub"
+            suffix = "-sample" if a.pages else ""
+            out = a.out / a.device / f"mushaf-text-{a.device}{suffix}.epub"
             out.parent.mkdir(parents=True, exist_ok=True)
-            print(f"mushaf-text: laying out 604 pages for {device.name}")
-            textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf")
+            print(f"mushaf-text: laying out {len(wanted)} pages for {device.name}")
+            textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf",
+                           pages=wanted if a.pages else None)
             print(f"  wrote {out}")
             continue
         if book == "companion" and not gloss_fonts:

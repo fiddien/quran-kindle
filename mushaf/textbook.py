@@ -139,13 +139,27 @@ def _ttf(woff2: Path, chars: set, cache: Path) -> bytes:
     return cached.read_bytes()
 
 
-def build(renderer, out: Path, tree: list, title: str, font_cache: Path) -> None:
-    """Write the text edition of the mushaf as a fixed-layout EPUB."""
+def _prune(tree: list, keep: set) -> list:
+    """Drop table-of-contents entries for pages outside a sample build."""
+    out = []
+    for label, page, children in tree:
+        kids = _prune(children, keep)
+        if page in keep or kids:
+            out.append((label, page if page in keep else kids[0][1], kids))
+    return out
+
+
+def build(renderer, out: Path, tree: list, title: str, font_cache: Path, pages: list = None) -> None:
+    """Write the text edition of the mushaf as a fixed-layout EPUB (optionally only some pages)."""
     from .epub import Screen, write_epub
 
     w, h = renderer.device.width, renderer.device.height
+    wanted = set(pages or range(1, len(renderer.mushaf.pages) + 1))
+    tree = _prune(tree, wanted)
     screens, assets, chars = [], {}, {}
     for page in renderer.mushaf.pages:
+        if page.number not in wanted:
+            continue
         rec = Recorder()
         renderer.draw_page(rec, page)
         body, used, labels = to_html(rec.ops, is_text_font=lambda family: family.startswith("QCF"))
