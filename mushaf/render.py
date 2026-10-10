@@ -32,7 +32,7 @@ DEVICES = {
 
 class Renderer:
     def __init__(self, mushaf: Mushaf, fonts: Path, device: Device, ui_font: str,
-                 text_scale: float = 0.92):
+                 text_scale: float = 0.85):
         self.mushaf = mushaf
         self.fonts = fonts
         self.device = device
@@ -43,7 +43,7 @@ class Renderer:
         self.text_width = round(w * 0.95 * text_scale)
         self.margin = (w - self.text_width) // 2
         self.top = round(h * 0.045)  # === running header band ===
-        self.bottom = round(h * 0.037)  # === page-number band ===
+        self.bottom = round(h * 0.012)  # === just enough to keep descenders off the edge ===
         self.pitch = (h - self.top - self.bottom) / 15
         # === QCF4 lines are about 16.1 em wide; fit the median line to the text width. ===
         self.size = round(self.text_width / 16.2)
@@ -86,7 +86,6 @@ class Renderer:
                 ink_centered(draw, (self.device.width / 2, y + self.pitch * 0.42), word["char"], font)
             else:
                 self._line(draw, line["words"], y, centered=opening)
-        self._page_number(draw, page.number)
         return quantize(img)
 
     def _baseline(self, y: float) -> float:
@@ -140,17 +139,17 @@ class Renderer:
         name = self.font("QCF4_QBSML", round(h * 0.62))
         ink_centered(draw, (self.margin, y), chr(0xF1F8 + page.surah - 1), name, "l")
         juz = self.font("QCF4_QBSML", round(h * 0.9))
-        ink_centered(draw, (self.device.width - self.margin, y), chr(0xF2D0 + page.juz - 1), juz, "r")
-        label = f"الحزب {arabic_number(page.hizb)}"
-        draw.text((self.device.width / 2, y), label, font=self.ui(round(h * 0.38)),
-                  fill=96, anchor="mm", direction="rtl")
+        juz_char = chr(0xF2D0 + page.juz - 1)
+        right = self.device.width - self.margin
+        ink_centered(draw, (right, y), juz_char, juz, "r")
+        # === Hizb sits just left of the juz' label; the page number takes the center. ===
+        left, _, rgt, _ = juz.getbbox(juz_char, anchor="ls")
+        draw.text((right - (rgt - left) - h * 0.3, y), f"الحزب {arabic_number(page.hizb)}",
+                  font=self.ui(round(h * 0.34)), fill=96, anchor="rm", direction="rtl")
+        draw.text((self.device.width / 2, y), arabic_number(page.number),
+                  font=self.ui(round(h * 0.5)), fill=INK, anchor="mm")
         rule_y = self.top - 3
-        draw.line((self.margin, rule_y, self.device.width - self.margin, rule_y), fill=160, width=1)
-
-    def _page_number(self, draw, n: int):
-        y = self.device.height - self.bottom / 2
-        draw.text((self.device.width / 2, y), arabic_number(n),
-                  font=self.ui(round(self.bottom * 0.5)), fill=64, anchor="mm")
+        draw.line((self.margin, rule_y, right, rule_y), fill=160, width=1)
 
 
 def quantize(img: Image.Image) -> Image.Image:

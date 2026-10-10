@@ -37,7 +37,7 @@ def main(argv=None):
     p.add_argument("--pages", help="render only these pages, e.g. 1-3,604 (for previews)")
     p.add_argument("--cache", type=Path, default=Path("cache"))
     p.add_argument("--out", type=Path, default=Path("out"))
-    p.add_argument("--text-scale", type=float, default=0.92,
+    p.add_argument("--text-scale", type=float, default=0.85,
                    help="script size relative to full width; lower = more space between lines")
     p.add_argument("--ui-font", help="TTF with Arabic glyphs for header/page numbers")
     a = p.parse_args(argv)
