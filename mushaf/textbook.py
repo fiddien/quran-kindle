@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 PAPER = 255
 GRID = 512  # === font units per em in the embedded fonts ===
+CORNER, CORNER_GRAY = 2, 221  # === PDF corner dots: size (px) and gray, two steps below white on e-ink's 16 grays ===
 
 
 class Recorder:
@@ -223,6 +224,10 @@ def build_pdf(renderer, out: Path, tree: list, title: str, font_cache: Path, pag
         pdfmetrics.registerFont(TTFont(family, str(path)))
 
     def paint(c, screen, k):
+        # === faint corner dots stop Kindle trimming the white borders, which narrows the page ===
+        c.setFillGray(CORNER_GRAY / 255)
+        for cx, cy in ((0, 0), (w - CORNER, 0), (0, h - CORNER), (w - CORNER, h - CORNER)):
+            c.rect(cx * k, cy * k, CORNER * k, CORNER * k, stroke=0, fill=1)
         for op in recorded[screen.page]:
             if op[0] == "text" and not font_family(op[3]).startswith("QCF"):
                 # === header labels: tiny images, as in the EPUB (reportlab can't shape Arabic) ===
