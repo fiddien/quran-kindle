@@ -9,6 +9,7 @@ from .data import Mushaf, Page, arabic_number
 
 INK = 0
 PAPER = 255
+BASELINE = 0.58  # === baseline position within a line's slot, as a share of the pitch ===
 SHORT_LINE = 0.9  # === lines narrower than this share of the text width are centered ===
 
 
@@ -44,9 +45,24 @@ class Renderer:
         self.margin = (w - self.text_width) // 2
         self.top = round(h * 0.045)  # === running header band ===
         self.bottom = round(h * 0.012)  # === just enough to keep descenders off the edge ===
-        self.pitch = (h - self.top - self.bottom) / 15
         # === QCF4 lines are about 16.1 em wide; fit the median line to the text width. ===
         self.size = round(self.text_width / 16.2)
+        # === start the lines low enough that the tallest first-line marks clear the header rule ===
+        reach = self._tallest_first_line()
+        pad = self.size * 0.12
+        self.lines_top = max(self.top, (self.top - 3 + pad + reach - BASELINE * (h - self.bottom) / 15)
+                             / (1 - BASELINE / 15))
+        self.pitch = (h - self.lines_top - self.bottom) / 15
+
+    def _tallest_first_line(self) -> float:
+        """How far the highest ink of any page's first text line rises above its baseline."""
+        reach = 0
+        for page in self.mushaf.pages:
+            for w in page.lines[0]["words"]:
+                if w["type"] in ("word", "end", "quarter"):
+                    top = self.font(w["font"], self.size).getbbox(w["char"], anchor="ls")[1]
+                    reach = max(reach, -top)
+        return reach
 
     @lru_cache(maxsize=None)
     def font(self, name: str, size: int) -> ImageFont.FreeTypeFont:
@@ -74,10 +90,10 @@ class Renderer:
         """Draw one page onto anything with ImageDraw's text/line/rectangle methods."""
         self.frame(draw, page)
         if len(page.lines) == 15:
-            slots = [self.top + i * self.pitch for i in range(15)]
+            slots = [self.lines_top + i * self.pitch for i in range(15)]
         else:  # === the two opening pages: center the short block vertically ===
             n = len(page.lines)
-            start = self.top + (15 - n) * self.pitch / 2
+            start = self.lines_top + (15 - n) * self.pitch / 2
             slots = [start + i * self.pitch for i in range(n)]
         opening = page.number <= 2
         for line, y in zip(page.lines, slots):
@@ -93,7 +109,7 @@ class Renderer:
 
     def _baseline(self, y: float) -> float:
         # === QCF4 ink sits roughly 0.55 em above and 0.4 em below the baseline. ===
-        return y + self.pitch * 0.58
+        return y + self.pitch * BASELINE
 
     def _line(self, draw, words, y, centered=False):
         size = self.size
