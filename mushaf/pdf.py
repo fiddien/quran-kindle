@@ -12,7 +12,8 @@ from reportlab.pdfgen import canvas
 
 
 def write_pdf(screens: list, tree: list, images: Path, out: Path, w: int, h: int,
-              title: str) -> None:
+              title: str, paint=None) -> None:
+    """Write the book; `paint(canvas, screen, scale)` draws a page instead of its PNG."""
     # === reportlab identifies outline entries by key, so each entry gets its own bookmark ===
     entries = []
 
@@ -32,7 +33,10 @@ def write_pdf(screens: list, tree: list, images: Path, out: Path, w: int, h: int
     c.setAuthor("King Fahd Glorious Qur'an Printing Complex")
     c.setViewerPreference("Direction", "R2L")
     for i, s in enumerate(screens):
-        c.drawImage(ImageReader(str(images / f"{s.stem}.png")), 0, 0, pw, ph)
+        if paint:
+            paint(c, s, 72 / 300)
+        else:
+            c.drawImage(ImageReader(str(images / f"{s.stem}.png")), 0, 0, pw, ph)
         if s.first:
             for key in keys.get(s.page, []):
                 c.bookmarkPage(key)

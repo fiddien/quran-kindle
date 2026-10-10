@@ -116,7 +116,7 @@ def to_html(ops, is_text_font=lambda family: True) -> tuple:
     return "\n".join(out), chars, images
 
 
-def _ttf(woff2: Path, chars: set, cache: Path) -> bytes:
+def _ttf(woff2: Path, chars: set, cache: Path) -> Path:
     """Convert a woff2 font to TTF, the format Kindle accepts, keeping only the glyphs used.
 
     Decoding woff2 in pure Python is slow, so results are cached per font.
@@ -136,7 +136,7 @@ def _ttf(woff2: Path, chars: set, cache: Path) -> bytes:
         tmp = cached.with_suffix(".tmp")
         font.save(tmp)
         tmp.rename(cached)
-    return cached.read_bytes()
+    return cached
 
 
 def _prune(tree: list, keep: set) -> list:
@@ -173,7 +173,7 @@ def build(renderer, out: Path, tree: list, title: str, font_cache: Path, pages: 
 
     faces = []
     for family, cs in sorted(chars.items()):
-        assets[f"fonts/{family}.ttf"] = ("font/ttf", _ttf(renderer.fonts / f"{family}.woff2", cs, font_cache))
+        assets[f"fonts/{family}.ttf"] = ("font/ttf", _ttf(renderer.fonts / f"{family}.woff2", cs, font_cache).read_bytes())
         faces.append(f"@font-face{{font-family:'{family}';src:url(fonts/{family}.ttf)}}")
     css = "\n".join(faces) + f"""
 html,body{{margin:0;padding:0}}
@@ -186,3 +186,65 @@ html,body{{margin:0;padding:0}}
     assets["img/cover.png"] = ("image/png", cover.getvalue())
     write_epub(screens, tree, None, out, w, h, title, assets=assets, cover="img/cover.png",
                head='<link rel="stylesheet" type="text/css" href="../style.css"/>', comic=False)
+
+
+def build_pdf(renderer, out: Path, tree: list, title: str, font_cache: Path, pages: list = None) -> None:
+    """Write the text edition as a PDF: the same positioned glyphs, with the fonts embedded.
+
+    Kindle's PDF reader allows highlights and notes on real text, and a PDF
+    keeps every glyph exactly where it is placed.
+    """
+    from reportlab.lib.utils import ImageReader
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+
+    from .epub import Screen
+    from .pdf import write_pdf
+
+    w, h = renderer.device.width, renderer.device.height
+    wanted = set(pages or range(1, len(renderer.mushaf.pages) + 1))
+    recorded, chars = {}, {}
+    for page in renderer.mushaf.pages:
+        if page.number in wanted:
+            rec = Recorder()
+            renderer.draw_page(rec, page)
+            recorded[page.number] = rec.ops
+            for op in rec.ops:
+                if op[0] == "text" and font_family(op[3]).startswith("QCF"):
+                    chars.setdefault(font_family(op[3]), set()).update(op[2])
+    for family, cs in chars.items():
+        path = _ttf(renderer.fonts / f"{family}.woff2", cs, font_cache)
+        pdfmetrics.registerFont(TTFont(family, str(path)))
+
+    def paint(c, screen, k):
+        for op in recorded[screen.page]:
+            if op[0] == "text" and not font_family(op[3]).startswith("QCF"):
+                # === header labels: tiny images, as in the EPUB (reportlab can't shape Arabic) ===
+                box, png = _label_png(op)
+                c.drawImage(ImageReader(io.BytesIO(png)), box[0] * k, (h - box[3]) * k,
+                            (box[2] - box[0]) * k, (box[3] - box[1]) * k)
+            elif op[0] == "text":
+                _, (x, y), text, font, fill, anchor, direction = op
+                left_a, top_a = font.getbbox(text, anchor=anchor)[:2]
+                left_s, top_s = font.getbbox(text, anchor="ls")[:2]
+                c.setFillGray(fill / 255)
+                c.setFont(font_family(font), font.size * k)
+                c.drawString((x + left_s - left_a) * k, (h - (y + top_s - top_a)) * k, text)
+            elif op[0] == "line":
+                # === filled strips, not strokes: adjacent shadow columns then meet without gaps ===
+                _, (x0, y0, x1, y1), fill, width = op
+                if y0 == y1:
+                    box = (min(x0, x1), y0 - width / 2, abs(x1 - x0), width)
+                else:
+                    box = (x0 - width / 2, min(y0, y1), width, abs(y1 - y0))
+                c.setFillGray(fill / 255)
+                c.rect(box[0] * k, (h - box[1] - box[3]) * k, box[2] * k, box[3] * k, stroke=0, fill=1)
+            elif op[0] == "rect":
+                _, (x0, y0, x1, y1), outline, width, radius, fill = op
+                c.setStrokeGray((outline if outline is not None else 255) / 255)
+                c.setLineWidth(width * k)
+                c.roundRect(x0 * k, (h - y1) * k, (x1 - x0) * k, (y1 - y0) * k, radius * k,
+                            stroke=1 if outline is not None else 0, fill=0)
+
+    screens = [Screen(f"p{n:03d}", n, True) for n in sorted(wanted)]
+    write_pdf(screens, _prune(tree, wanted), None, out, w, h, title, paint=paint)

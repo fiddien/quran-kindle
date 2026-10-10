@@ -99,7 +99,7 @@ def main(argv=None):
     wanted = _pages(a.pages)
     for book in a.book.split(","):
         if book == "mushaf-text":
-            # === experimental: real text instead of page images (EPUB only) ===
+            # === experimental: real text instead of page images ===
             qcf4 = sources.fetch("quran-qcf4", a.cache)
             mushaf = load(qcf4, sources.fetch("quran-meta", a.cache))
             renderer = Renderer(mushaf, qcf4 / "fonts-woff2", device, ui_font, a.text_scale)
@@ -107,9 +107,14 @@ def main(argv=None):
             out = a.out / a.device / f"mushaf-text-{a.device}{suffix}.epub"
             out.parent.mkdir(parents=True, exist_ok=True)
             print(f"mushaf-text: laying out {len(wanted)} pages for {device.name}")
-            textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf",
-                           pages=wanted if a.pages else None)
-            print(f"  wrote {out}")
+            sample = wanted if a.pages else None
+            if "epub" in a.formats:
+                textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf", pages=sample)
+                print(f"  wrote {out}")
+            if "pdf" in a.formats:
+                textbook.build_pdf(renderer, out.with_suffix(".pdf"), toc_tree(mushaf), TITLES[book],
+                                   a.cache / "ttf", pages=sample)
+                print(f"  wrote {out.with_suffix('.pdf')}")
             continue
         if book == "companion" and not gloss_fonts:
             sys.exit("no serif font found for the English glosses (install Liberation or DejaVu fonts)")
