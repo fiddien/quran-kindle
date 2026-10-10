@@ -126,6 +126,7 @@ class TranslationRenderer(Renderer):
         self.serif, self.italic, self.bold, self.symbol = serif, italic, bold, symbol
         # === {verse_key: main topic entries} and {entry: index screen stem}, set once the index is laid out ===
         self.topics, self.entries = {}, {}
+        self.column_share = 0.3  # === share of the text width given to the topic column ===
         w, h = self.device.width, self.device.height
         self.side = round(w * 0.07)
         self.text_top = self.top + h * 0.025
@@ -214,8 +215,8 @@ class TranslationRenderer(Renderer):
         note_number = _font(self.bold, note_size)
         topic_font = _font(self.italic, max(round(size * 0.8), 8))
         full = self.device.width - 2 * self.side
-        # === with topics, the verses keep 70% of the width and the topics take a column at the right ===
-        column = full * 0.3 if self.topics else 0
+        # === with topics, the topics take a column at the right and the verses keep the rest ===
+        column = full * self.column_share if self.topics else 0
         gutter = size * 0.8 if self.topics else 0
         width = full - column - gutter
         leading = size * 1.32
