@@ -83,8 +83,8 @@ def main(argv=None):
     p.add_argument("--out", type=Path, default=Path("out"))
     p.add_argument("--text-scale", type=float, default=0.85,
                    help="mushaf script size relative to full width; lower = more space between lines")
-    p.add_argument("--pdf-footer", type=float, default=0.057,
-                   help="share of the screen height the reader keeps below a PDF page (Kindle: 0.057)")
+    p.add_argument("--pdf-footer", type=float, default=0.0,
+                   help="shorten text-PDF pages by this share of the screen height (default: full height)")
     p.add_argument("--ui-font", help="TTF with Arabic glyphs for header/page numbers")
     a = p.parse_args(argv)
 
@@ -114,7 +114,7 @@ def main(argv=None):
                 textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf", pages=sample)
                 print(f"  wrote {out}")
             if "pdf" in a.formats:
-                # === shorter by Kindle's PDF progress bar, so the page fills the width ===
+                # === optionally shorter, to leave room below the page for a reader's progress bar ===
                 short = Device(device.name, device.width, round(device.height * (1 - a.pdf_footer)))
                 pdf_renderer = Renderer(mushaf, qcf4 / "fonts-woff2", short, ui_font, a.text_scale)
                 textbook.build_pdf(pdf_renderer, out.with_suffix(".pdf"), toc_tree(mushaf), TITLES[book],

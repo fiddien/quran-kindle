@@ -37,9 +37,7 @@ Each size comes as three books:
 
 In `mushaf-text` every word is real text in the King Fahd Complex font, placed exactly
 where the printed mushaf has it, so the page looks the same as the image edition. Kindle's
-PDF reader can highlight single words and attach notes to them. Its pages are a little
-shorter than the screen, leaving room for the reader's progress bar below them. In the
-notes list and in "My Clippings", highlighted Qur'an text shows as codes rather than
+PDF reader can highlight single words and attach notes to them. In the notes list and in "My Clippings", highlighted Qur'an text shows as codes rather than
 Arabic, because those views don't use the book's font.
 
 ## Word-by-word companion
