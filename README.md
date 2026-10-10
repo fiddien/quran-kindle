@@ -67,10 +67,11 @@ page takes two screens instead, split between verses.
 Where a surah begins, the mushaf page is followed by the theme of the surah from its
 introduction in QUL, on screens of its own.
 
-At the back, a topic index lists QUL's Qur'an topics A to Z with the mushaf pages where
-each appears, sub-topics nested beneath. Tapping a page number opens that page, every
-translation screen has a *Topic index* link at its foot, and the index is also in the
-table of contents.
+After each page's translation, a *Topics* screen lists verse by verse the topics QUL
+assigns to it; tapping a topic opens its entry in the topic index at the back. The index
+lists the topics A to Z with the mushaf pages where each appears, sub-topics nested
+beneath; tapping a page number opens that page. The index is also in the table of
+contents.
 
 ## Build
 

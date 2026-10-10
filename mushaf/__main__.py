@@ -180,18 +180,19 @@ def _text_book(book, a, device, ui_font, fonts, wanted):
             themes = load_themes(sources.local("qul-surah-info-en"))
             amiri = sources.fetch("amiri-quran", a.cache) / "files" / "amiri-quran-arabic-400-normal.woff2"
             return TranslationRenderer(*args, verses=verses, names=names, serif=fonts[0], italic=fonts[1],
-                                       bold=fonts[2], themes=themes, notes=notes, symbol=str(amiri), index=INDEX)
+                                       bold=fonts[2], themes=themes, notes=notes, symbol=str(amiri))
         return Renderer(*args)
 
     def screens(r):
         if book == "mushaf-text":
             return textbook.mushaf_screens(r, wanted)
-        out = [s for n in wanted for s in r.screens_ops(r.mushaf.pages[n - 1])]
+        index = []
         if book == "translation-text":
+            # === the index is laid out first, so each verse's topics can link to their entries ===
             verse_page = {k: v["page"] for k, v in json.loads((qcf4 / "verses.json").read_text()).items()}
-            topics = load_topics(sources.local("qul-topics"), verse_page, set(wanted))
-            out += index_screens(r, topics, wanted[-1])
-        return out
+            topics, r.topics = load_topics(sources.local("qul-topics"), verse_page, set(wanted))
+            index, r.entries = index_screens(r, topics, wanted[-1])
+        return [s for n in wanted for s in r.screens_ops(r.mushaf.pages[n - 1])] + index
 
     tree = toc_tree(mushaf, pages=book != "mushaf-text")
     if book == "translation-text":

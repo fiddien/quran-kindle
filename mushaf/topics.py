@@ -24,18 +24,20 @@ class Topic:
     children: list = field(default_factory=list)
 
 
-def load_topics(db_zip: Path, verse_page: dict, pages: set) -> list:
-    """Main entries A to Z with their sub-entries, keeping only the given mushaf pages."""
+def load_topics(db_zip: Path, verse_page: dict, pages: set) -> tuple:
+    """Main entries A to Z with their sub-entries, keeping only the given mushaf pages,
+    and {verse_key: names of the main entries that cite the verse}."""
     with zipfile.ZipFile(db_zip) as z:
         blob = z.read(next(n for n in z.namelist() if n.endswith(".db")))
     db = sqlite3.connect(":memory:")
     db.deserialize(blob)
-    nodes, parent = {}, {}
+    nodes, parent, verses = {}, {}, {}
     for tid, name, pid, tpid, ayahs in db.execute(
             "SELECT topic_id, name, parent_id, thematic_parent_id, ayahs FROM topics"):
         name = " ".join(name.split())
-        refs = (a.strip() for a in (ayahs or "").split(","))
-        nodes[tid] = Topic(name, {verse_page[a] for a in refs if a in verse_page} & pages)
+        refs = [a.strip() for a in (ayahs or "").split(",")]
+        verses[tid] = [a for a in refs if verse_page.get(a) in pages]
+        nodes[tid] = Topic(name, {verse_page[a] for a in verses[tid]})
         # === parent_id always marks a sub-entry; in the thematic tree only lower-case names do ===
         if pid:
             parent[tid] = pid
@@ -66,7 +68,19 @@ def load_topics(db_zip: Path, verse_page: dict, pages: set) -> list:
         if same is not node:
             same.pages |= node.pages
             same.children += node.children
-    return _tidy(list(roots.values()))
+    topics = _tidy(list(roots.values()))
+
+    # === each verse lists the main entries under which it is cited, in index order ===
+    def top(tid):
+        while nested(tid):
+            tid = parent[tid]
+        return roots[nodes[tid].name.casefold()].name
+
+    by_verse = {}
+    for tid, keys in verses.items():
+        for key in keys:
+            by_verse.setdefault(key, set()).add(top(tid))
+    return topics, {key: sorted(names, key=sort_key) for key, names in by_verse.items()}
 
 
 def _tidy(topics: list) -> list:
@@ -89,8 +103,9 @@ def letter(name: str) -> str:
     return key[0].upper() if key and key[0].isalpha() else "#"
 
 
-def index_screens(r, topics: list, last_page: int) -> list:
-    """(Screen, recorded ops) for the index: the A to Z, then the entries."""
+def index_screens(r, topics: list, last_page: int) -> tuple:
+    """(Screen, recorded ops) for the index, the A to Z then the entries, and
+    {main entry: stem of the screen where it starts}."""
     from .epub import Screen
     from .textbook import Recorder
 
@@ -114,7 +129,7 @@ def index_screens(r, topics: list, last_page: int) -> list:
         rows += [(kind, items, t.name, height) for kind, items, height in _entry(t, 0, body, main, step, width, leading)]
 
     room = r.text_bottom - r.text_top
-    screens, current, used, at = [], [], 0.0, {}
+    screens, current, used, at, entry = [], [], 0.0, {}, {}
     for i, row in enumerate(rows):
         # === a letter heading never ends a screen ===
         need = row[-1] + (rows[i + 1][-1] if row[0] == "letter" and i + 1 < len(rows) else 0)
@@ -127,6 +142,7 @@ def index_screens(r, topics: list, last_page: int) -> list:
                 used += leading
         if row[0] == "letter":
             at[row[1]] = len(screens) + 1
+        entry.setdefault(row[2], f"x{len(screens) + 1:03d}")
         current.append(row)
         used += row[-1]
     if current:
@@ -154,7 +170,7 @@ def index_screens(r, topics: list, last_page: int) -> list:
                                  target)
             y += row[-1]
         out.append((Screen(stem, last_page, False), rec.ops))
-    return out
+    return out, entry
 
 
 def _entry(t: Topic, depth: int, body, main, step, width, leading) -> list:
