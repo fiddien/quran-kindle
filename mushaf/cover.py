@@ -427,10 +427,27 @@ def _rosette(book, w, h, qcf_fonts, amiri, *_, title_font=None, title_text=ARABI
     d = ImageDraw.Draw(img)
     r = w * 0.05
     d.polygon(_star_pts(w / 2, h * 0.4, r * 1.2), fill=40)
-    d.rectangle((0, h * 0.72, w, h), fill=245)
-    # === the calligraphy alone carries the title; the book's name sits small beneath it ===
-    _title_block(d, w, h, h * 0.82, amiri, book, title_font=title_font, title_text=title_text,
-                 english_title=False, measure=measure, title_ink=title_ink, outline=outline, paper=245)
+    band_top = h * 0.72
+    d.rectangle((0, band_top, w, h), fill=245)
+    # === title and book name, centred in the band by their ink so the margins match ===
+    font_path = str(title_font or amiri)
+    title = ImageFont.truetype(font_path, round(w * 0.1))
+    for _ in range(3):
+        left, _, right, _ = title.getbbox(title_text, anchor="ls")
+        title = ImageFont.truetype(font_path, max(8, round(title.size * w * measure / (right - left))))
+    t_left, t_top, t_right, t_bottom = title.getbbox(title_text, anchor="ls", stroke_width=outline)
+    small = ImageFont.truetype(SANS, round(w * 0.026))
+    name = BOOKS[book].upper().replace(chr(0xA0), " ")
+    while small.getlength(name) > w * 0.6 and small.size > 8:
+        small = ImageFont.truetype(SANS, small.size - 1)
+    n_left, n_top, n_right, n_bottom = small.getbbox(name, anchor="ls")
+    gap = w * 0.05
+    block = (t_bottom - t_top) + gap + (n_bottom - n_top)
+    top = band_top + (h - band_top - block) / 2
+    _ink(d, (w / 2, top + (t_bottom - t_top) / 2), title_text, title, 0 if title_ink is None else title_ink,
+         outline=outline, paper=245)
+    name_base = top + (t_bottom - t_top) + gap - n_top
+    d.text((w / 2 - (n_left + n_right) / 2, name_base), name, font=small, fill=90, anchor="ls")
     return quantize(img)
 
 

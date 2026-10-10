@@ -6,7 +6,7 @@ from pathlib import Path
 
 from . import sources, textbook
 from .companion import CompanionRenderer
-from .cover import render_cover
+from .cover import _rosette as render_rosette
 from .translation import TranslationRenderer, load_translation
 from .data import PAGE_COUNT, load, load_glosses
 from .epub import Screen, toc_tree, write_epub
@@ -105,7 +105,7 @@ def main(argv=None):
     gloss_fonts = next((f for f in GLOSS_FONTS if all(Path(x).exists() for x in f)), None)
 
     # === download sources once, before the worker processes start reading them ===
-    for name in ("quran-qcf4", "quran-meta", "quran-wbw", "amiri-quran", "quran-cloud"):
+    for name in ("quran-qcf4", "quran-meta", "quran-wbw", "amiri-quran", "aref-ruqaa", "quran-cloud"):
         sources.fetch(name, a.cache)
 
     device = DEVICES[a.device]
@@ -153,7 +153,10 @@ def _cover_png(key: str, device, cache: Path, fonts) -> bytes:
 
     qcf4 = sources.fetch("quran-qcf4", cache)
     amiri = sources.fetch("amiri-quran", cache) / "files" / "amiri-quran-arabic-400-normal.woff2"
-    img = render_cover(key, device.width, device.height, qcf4 / "fonts-woff2", amiri, *fonts)
+    ruqaa = sources.fetch("aref-ruqaa", cache) / "files" / "aref-ruqaa-arabic-700-normal.woff2"
+    # === the rosette, with the title in outlined ruq'ah ===
+    img = render_rosette(key, device.width, device.height, qcf4 / "fonts-woff2", amiri, *fonts,
+                         title_font=ruqaa, outline=1, title_ink=40, measure=0.55)
     buf = io.BytesIO()
     img.save(buf, "PNG", optimize=True)
     return buf.getvalue()
