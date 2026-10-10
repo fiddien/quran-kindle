@@ -10,7 +10,9 @@ into ./cache and never committed.
 import base64
 import hashlib
 import io
+import shutil
 import tarfile
+import tempfile
 import urllib.request
 from pathlib import Path
 
@@ -41,15 +43,18 @@ def fetch(name: str, cache: Path) -> Path:
     """Return the extracted package directory, downloading it if needed."""
     url, integrity = PACKAGES[name]
     dest = cache / name
-    marker = dest / ".ok"
-    if marker.exists():
+    if (dest / ".ok").exists():
         return dest / "package"
     print(f"downloading {url}")
     with urllib.request.urlopen(url) as resp:
         blob = resp.read()
     _verify(blob, integrity)
-    dest.mkdir(parents=True, exist_ok=True)
+    # === unpack beside the target, then move it into place, so no reader sees half a package ===
+    cache.mkdir(parents=True, exist_ok=True)
+    staging = Path(tempfile.mkdtemp(dir=cache, prefix=f".{name}-"))
     with tarfile.open(fileobj=io.BytesIO(blob), mode="r:gz") as tar:
-        tar.extractall(dest, filter="data")
-    marker.write_text(integrity)
+        tar.extractall(staging, filter="data")
+    (staging / ".ok").write_text(integrity)
+    shutil.rmtree(dest, ignore_errors=True)
+    staging.rename(dest)
     return dest / "package"

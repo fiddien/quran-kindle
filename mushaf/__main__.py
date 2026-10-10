@@ -90,6 +90,10 @@ def main(argv=None):
         sys.exit("no UI font found; pass --ui-font /path/to/font.ttf (e.g. DejaVuSans.ttf)")
     gloss_fonts = next((f for f in GLOSS_FONTS if all(Path(x).exists() for x in f)), None)
 
+    # === download sources once, before the worker processes start reading them ===
+    for name in ("quran-qcf4", "quran-meta", "quran-wbw"):
+        sources.fetch(name, a.cache)
+
     device = DEVICES[a.device]
     wanted = _pages(a.pages)
     for book in a.book.split(","):

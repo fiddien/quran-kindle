@@ -18,6 +18,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     strategy:
+      # === one device failing shouldn't cancel the others ===
+      fail-fast: false
       matrix:
         # === paperwhite: 1236x1648 · kindle: 1072x1448 (also Paperwhite 3/4, Kobo Clara) · oasis: 1264x1680 (also Kobo Libra) ===
         device: [paperwhite, kindle, oasis]
