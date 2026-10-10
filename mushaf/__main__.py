@@ -9,7 +9,7 @@ from .companion import CompanionRenderer
 from .data import PAGE_COUNT, load, load_glosses
 from .epub import Screen, toc_tree, write_epub
 from .pdf import write_pdf
-from .render import DEVICES, Renderer
+from .render import DEVICES, Device, Renderer
 
 # === Arabic-capable font for the hizb label and page numbers ===
 UI_FONTS = [
@@ -83,6 +83,8 @@ def main(argv=None):
     p.add_argument("--out", type=Path, default=Path("out"))
     p.add_argument("--text-scale", type=float, default=0.85,
                    help="mushaf script size relative to full width; lower = more space between lines")
+    p.add_argument("--pdf-footer", type=float, default=0.057,
+                   help="share of the screen height the reader keeps below a PDF page (Kindle: 0.057)")
     p.add_argument("--ui-font", help="TTF with Arabic glyphs for header/page numbers")
     a = p.parse_args(argv)
 
@@ -112,7 +114,10 @@ def main(argv=None):
                 textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf", pages=sample)
                 print(f"  wrote {out}")
             if "pdf" in a.formats:
-                textbook.build_pdf(renderer, out.with_suffix(".pdf"), toc_tree(mushaf), TITLES[book],
+                # === shorter by Kindle's PDF progress bar, so the page fills the width ===
+                short = Device(device.name, device.width, round(device.height * (1 - a.pdf_footer)))
+                pdf_renderer = Renderer(mushaf, qcf4 / "fonts-woff2", short, ui_font, a.text_scale)
+                textbook.build_pdf(pdf_renderer, out.with_suffix(".pdf"), toc_tree(mushaf), TITLES[book],
                                    a.cache / "ttf", pages=sample)
                 print(f"  wrote {out.with_suffix('.pdf')}")
             continue

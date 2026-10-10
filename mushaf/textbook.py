@@ -14,6 +14,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 PAPER = 255
+GRID = 512  # === font units per em in the embedded fonts ===
 
 
 class Recorder:
@@ -125,15 +126,19 @@ def _ttf(woff2: Path, chars: set, cache: Path) -> Path:
     from fontTools import subset
     from fontTools.ttLib import TTFont
 
+    from fontTools.ttLib.scaleUpem import scale_upem
+
     cache.mkdir(parents=True, exist_ok=True)
     key = hashlib.sha1("".join(sorted(chars)).encode()).hexdigest()[:12]
-    cached = cache / f"{woff2.stem}-{key}.ttf"
+    cached = cache / f"{woff2.stem}-{key}-g{GRID}.ttf"
     if not cached.exists():
         font = TTFont(woff2)
         font.flavor = None
         sub = subset.Subsetter(subset.Options(layout_features=["*"], name_IDs=["*"], notdef_outline=True))
         sub.populate(unicodes={ord(c) for c in chars})
         sub.subset(font)
+        # === a coarser outline grid: about 0.1 screen pixel at reading size, 19% smaller ===
+        scale_upem(font, GRID)
         tmp = cached.with_suffix(".tmp")
         font.save(tmp)
         tmp.rename(cached)
