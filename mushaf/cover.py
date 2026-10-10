@@ -286,3 +286,160 @@ def render_style(style: str, book: str, w: int, h: int, qcf_fonts: Path, amiri: 
                  italic: str, bold: str) -> Image.Image:
     """Cover in one of the alternative STYLES."""
     return STYLES[style](book, w, h, qcf_fonts, amiri, serif, italic, bold)
+
+
+# === full-bleed eight-pointed-star patterns ===
+
+def _star_pts(cx, cy, r, rot=0.0):
+    """Eight-pointed star (two overlapping squares) as 16 points, optionally rotated."""
+    import math
+    inner = r * math.cos(math.pi / 4) / math.cos(math.pi / 8)
+    return [(cx + (r if i % 2 == 0 else inner) * math.cos(math.pi / 8 * i - math.pi / 2 + rot),
+             cy + (r if i % 2 == 0 else inner) * math.sin(math.pi / 8 * i - math.pi / 2 + rot)) for i in range(16)]
+
+
+def _supersampled(w, h, bg, paint):
+    """Draw at twice the size and scale down, so fine lattice lines stay smooth."""
+    big = Image.new("L", (w * 2, h * 2), bg)
+    paint(ImageDraw.Draw(big), w * 2, h * 2, big)
+    return big.resize((w, h), Image.LANCZOS)
+
+
+def _title_block(d, w, h, cy, amiri, book, ink=0, sub=90, english=True):
+    title = ImageFont.truetype(str(amiri), round(w * 0.1))
+    _ink(d, (w / 2, cy), ARABIC, title, ink)
+    if english:
+        f = ImageFont.truetype(SANS_BOLD, round(w * 0.04))
+        _spaced_simple(d, (w / 2, cy + w * 0.11), "THE NOBLE QUR'AN", f, ink, 0.15)
+        small = ImageFont.truetype(SANS, round(w * 0.026))
+        name = BOOKS[book].upper().replace(chr(0xA0), " ")
+        while small.getlength(name) > w * 0.6 and small.size > 8:
+            small = ImageFont.truetype(SANS, small.size - 1)
+        d.text((w / 2, cy + w * 0.17), name, font=small, fill=sub, anchor="mm")
+
+
+def _spaced_simple(d, xy, text, font, fill, tracking):
+    em = font.size * tracking
+    width = sum(font.getlength(ch) for ch in text) + em * (len(text) - 1)
+    x, y = xy[0] - width / 2, xy[1]
+    for ch in text:
+        d.text((x, y), ch, font=font, fill=fill, anchor="lm")
+        x += font.getlength(ch) + em
+
+
+def _lattice_lines(d, W, H, step, color, width, rot=0.0):
+    for row in range(-1, int(H / step) + 2):
+        for col in range(-1, int(W / step) + 2):
+            d.polygon(_star_pts(col * step, row * step, step * 0.5, rot), outline=color, width=width)
+
+
+def _window(book, w, h, qcf_fonts, amiri, *_):
+    """Full-bleed star lattice with a carved-screen window for the title."""
+    def paint(d, W, H, img):
+        _lattice_lines(d, W, H, W / 7, 60, max(2, W // 300))
+        _lattice_lines(d, W, H, W / 7, 150, max(1, W // 900), rot=0.3927)
+    img = _supersampled(w, h, 238, paint)
+    d = ImageDraw.Draw(img)
+    bw, bh, cy = w * 0.7, h * 0.3, h * 0.5
+    d.rounded_rectangle((w / 2 - bw / 2, cy - bh / 2, w / 2 + bw / 2, cy + bh / 2), radius=w * 0.04, fill=250,
+                        outline=40, width=max(2, round(w * 0.005)))
+    _title_block(d, w, h, cy - bh * 0.15, amiri, book)
+    return quantize(img)
+
+
+def _star_cross(book, w, h, qcf_fonts, amiri, *_):
+    """Interlocking stars and crosses, filled in alternating grays like glazed tiles."""
+    def paint(d, W, H, img):
+        step = W / 5
+        d.rectangle((0, 0, W, H), fill=225)
+        for row in range(-1, int(H / step) + 2):
+            for col in range(-1, int(W / step) + 2):
+                shade = 70 if (row + col) % 2 == 0 else 130
+                d.polygon(_star_pts(col * step, row * step, step * 0.62), fill=shade, outline=20, width=W // 300)
+                d.polygon(_star_pts(col * step, row * step, step * 0.34, 0.3927), fill=235, outline=20, width=W // 400)
+    img = _supersampled(w, h, 225, paint)
+    d = ImageDraw.Draw(img)
+    d.rectangle((0, h * 0.62, w, h * 0.86), fill=245)
+    d.line((0, h * 0.62, w, h * 0.62), fill=20, width=3)
+    d.line((0, h * 0.86, w, h * 0.86), fill=20, width=3)
+    _title_block(d, w, h, h * 0.69, amiri, book)
+    return quantize(img)
+
+
+def _rising(book, w, h, qcf_fonts, amiri, *_):
+    """The lattice dense and dark at the foot, thinning to open space where the title sits."""
+    def paint(d, W, H, img):
+        step = W / 9
+        for row in range(-1, int(H / step) + 2):
+            t = max(0.0, min(1.0, (row * step / H - 0.35) / 0.6))
+            if t <= 0:
+                continue
+            color = round(220 - 190 * t)
+            width = max(1, round(W / 900 + t * W / 220))
+            for col in range(-1, int(W / step) + 2):
+                d.polygon(_star_pts(col * step, row * step, step * 0.5), outline=color, width=width)
+    img = _supersampled(w, h, 250, paint)
+    d = ImageDraw.Draw(img)
+    _title_block(d, w, h, h * 0.24, amiri, book)
+    return quantize(img)
+
+
+def _night(book, w, h, qcf_fonts, amiri, *_):
+    """Fine white lattice on black, with the title in a circular clearing."""
+    def paint(d, W, H, img):
+        _lattice_lines(d, W, H, W / 8, 200, max(1, W // 500))
+        _lattice_lines(d, W, H, W / 8, 110, max(1, W // 900), rot=0.3927)
+        r = W * 0.36
+        d.ellipse((W / 2 - r, H * 0.46 - r, W / 2 + r, H * 0.46 + r), fill=0, outline=230, width=W // 250)
+        d.ellipse((W / 2 - r * 0.93, H * 0.46 - r * 0.93, W / 2 + r * 0.93, H * 0.46 + r * 0.93), outline=150,
+                  width=W // 600)
+    img = _supersampled(w, h, 0, paint)
+    d = ImageDraw.Draw(img)
+    _title_block(d, w, h, h * 0.42, amiri, book, ink=255, sub=170)
+    return quantize(img)
+
+
+def _rosette(book, w, h, qcf_fonts, amiri, *_):
+    """Concentric stars, each ring turned half a step: a ceiling medallion."""
+    import math
+
+    def paint(d, W, H, img):
+        cx, cy = W / 2, H * 0.4
+        for i in range(14):
+            r = W * (0.06 + i * 0.055)
+            d.polygon(_star_pts(cx, cy, r, (i % 2) * math.pi / 8), outline=40 + i * 9, width=max(1, W // 400))
+        for k in range(8):
+            a = k * math.pi / 4 - math.pi / 2
+            d.polygon(_star_pts(cx + W * 0.36 * math.cos(a), cy + W * 0.36 * math.sin(a), W * 0.05), fill=60)
+    img = _supersampled(w, h, 245, paint)
+    d = ImageDraw.Draw(img)
+    r = w * 0.05
+    d.polygon(_star_pts(w / 2, h * 0.4, r * 1.2), fill=40)
+    d.rectangle((0, h * 0.74, w, h), fill=245)
+    _title_block(d, w, h, h * 0.8, amiri, book)
+    return quantize(img)
+
+
+def _zellige(book, w, h, qcf_fonts, amiri, *_):
+    """A mosaic of stars in varied grays, with a quiet band for the title."""
+    import random
+    rnd = random.Random(8)
+
+    def paint(d, W, H, img):
+        step = W / 7
+        d.rectangle((0, 0, W, H), fill=200)
+        for row in range(-1, int(H / step) + 2):
+            for col in range(-1, int(W / step) + 2):
+                x, y = col * step + (step / 2 if row % 2 else 0), row * step
+                d.polygon(_star_pts(x, y, step * 0.48), fill=rnd.choice((40, 80, 120, 160, 225)), outline=250,
+                          width=W // 250)
+    img = _supersampled(w, h, 200, paint)
+    d = ImageDraw.Draw(img)
+    d.rectangle((w * 0.08, h * 0.36, w * 0.92, h * 0.64), fill=250)
+    d.rectangle((w * 0.1, h * 0.37, w * 0.9, h * 0.63), outline=40, width=2)
+    _title_block(d, w, h, h * 0.44, amiri, book)
+    return quantize(img)
+
+
+STYLES.update({"window": _window, "star-cross": _star_cross, "rising": _rising, "night": _night,
+               "rosette": _rosette, "zellige": _zellige})
