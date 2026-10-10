@@ -45,7 +45,7 @@ Arabic, because those views don't use the book's font.
 ## Word-by-word companion
 
 A second book shows every mushaf line with an English gloss under each word.
-At readable sizes a page needs two screens (lines 1–8, then 9–15). Both screens
+At readable sizes a page needs three screens of five lines each. Every screen
 are labelled with the mushaf page number, so "Go to page 50" can still find
 page 50.
 

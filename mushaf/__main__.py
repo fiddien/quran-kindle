@@ -6,6 +6,8 @@ from pathlib import Path
 
 from . import sources, textbook
 from .companion import CompanionRenderer
+from .cover import render_cover
+from .translation import TranslationRenderer, load_translation
 from .data import PAGE_COUNT, load, load_glosses
 from .epub import Screen, toc_tree, write_epub
 from .pdf import write_pdf
@@ -17,21 +19,28 @@ UI_FONTS = [
     "/Library/Fonts/Arial Unicode.ttf",
     "C:/Windows/Fonts/arial.ttf",
 ]
-# === serif faces for the English glosses (regular, italic) ===
+# === serif faces for the English text (regular, italic, bold) ===
 GLOSS_FONTS = [
     ("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf",
-     "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf"),
+     "/usr/share/fonts/truetype/liberation/LiberationSerif-Italic.ttf",
+     "/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf"),
     ("/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
-     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf"),
+     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Italic.ttf",
+     "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf"),
     ("/System/Library/Fonts/Supplemental/Times New Roman.ttf",
-     "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf"),
-    ("C:/Windows/Fonts/times.ttf", "C:/Windows/Fonts/timesi.ttf"),
+     "/System/Library/Fonts/Supplemental/Times New Roman Italic.ttf",
+     "/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf"),
+    ("C:/Windows/Fonts/times.ttf", "C:/Windows/Fonts/timesi.ttf", "C:/Windows/Fonts/timesbd.ttf"),
 ]
 TITLES = {
-    "mushaf": "المصحف الشريف · Madinah Mushaf",
-    "companion": "Madinah Mushaf · Word by Word (English)",
-    "mushaf-text": "المصحف الشريف · Madinah Mushaf (text)",
+    "mushaf": "القرآن الكريم · Madinah Mushaf",
+    "companion": "القرآن الكريم · Word by Word (English)",
+    "mushaf-text": "القرآن الكريم · Madinah Mushaf (text)",
+    "companion-text": "القرآن الكريم · Word by Word (English, text)",
+    "translation-text": "القرآن الكريم · with Saheeh International translation",
 }
+# === text books and the cover each one wears ===
+TEXT_BOOKS = {"mushaf-text": "mushaf", "companion-text": "companion", "translation-text": "translation"}
 
 _renderer = None
 
@@ -76,7 +85,7 @@ def _pages(spec):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--device", choices=sorted(DEVICES), default="paperwhite")
-    p.add_argument("--book", default="mushaf,companion", help="comma list of mushaf,companion,mushaf-text (experimental)")
+    p.add_argument("--book", default="mushaf,companion", help="comma list of mushaf,companion (images) and mushaf-text,companion-text,translation-text")
     p.add_argument("--formats", default="epub,pdf", help="comma list of epub,pdf")
     p.add_argument("--pages", help="render only these pages, e.g. 1-3,604 (for previews)")
     p.add_argument("--cache", type=Path, default=Path("cache"))
@@ -96,32 +105,18 @@ def main(argv=None):
     gloss_fonts = next((f for f in GLOSS_FONTS if all(Path(x).exists() for x in f)), None)
 
     # === download sources once, before the worker processes start reading them ===
-    for name in ("quran-qcf4", "quran-meta", "quran-wbw"):
+    for name in ("quran-qcf4", "quran-meta", "quran-wbw", "amiri-quran", "quran-cloud"):
         sources.fetch(name, a.cache)
 
     device = DEVICES[a.device]
     wanted = _pages(a.pages)
     for book in a.book.split(","):
-        if book == "mushaf-text":
-            # === experimental: real text instead of page images ===
-            qcf4 = sources.fetch("quran-qcf4", a.cache)
-            mushaf = load(qcf4, sources.fetch("quran-meta", a.cache))
-            renderer = Renderer(mushaf, qcf4 / "fonts-woff2", device, ui_font, a.text_scale, a.script_scale)
-            suffix = "-sample" if a.pages else ""
-            out = a.out / a.device / f"mushaf-text-{a.device}{suffix}.epub"
-            out.parent.mkdir(parents=True, exist_ok=True)
-            print(f"mushaf-text: laying out {len(wanted)} pages for {device.name}")
-            sample = wanted if a.pages else None
-            if "epub" in a.formats:
-                textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf", pages=sample)
-                print(f"  wrote {out}")
-            if "pdf" in a.formats:
-                # === optionally shorter, to leave room below the page for a reader's progress bar ===
-                short = Device(device.name, device.width, round(device.height * (1 - a.pdf_footer)))
-                pdf_renderer = Renderer(mushaf, qcf4 / "fonts-woff2", short, ui_font, a.text_scale, a.script_scale)
-                textbook.build_pdf(pdf_renderer, out.with_suffix(".pdf"), toc_tree(mushaf), TITLES[book],
-                                   a.cache / "ttf", pages=sample)
-                print(f"  wrote {out.with_suffix('.pdf')}")
+        if book in TEXT_BOOKS:
+            if not gloss_fonts:
+                sys.exit("no serif font found for the English text (install Liberation or DejaVu fonts)")
+            # === each text book in its own process: reportlab keeps font state between PDFs ===
+            with ProcessPoolExecutor(max_workers=1) as solo:
+                solo.submit(_text_book, book, a, device, ui_font, gloss_fonts, wanted).result()
             continue
         if book == "companion" and not gloss_fonts:
             sys.exit("no serif font found for the English glosses (install Liberation or DejaVu fonts)")
@@ -144,11 +139,62 @@ def main(argv=None):
         stem = a.out / a.device / f"{book}-{a.device}"
         size = (device.width, device.height, TITLES[book])
         if "epub" in a.formats:
-            write_epub(screens, tree, images, stem.with_suffix(".epub"), *size)
+            cover = _cover_png(book, device, a.cache, gloss_fonts)
+            write_epub(screens, tree, images, stem.with_suffix(".epub"), *size,
+                       assets={"img/cover.png": ("image/png", cover)}, cover="img/cover.png")
             print(f"  wrote {stem.with_suffix('.epub')}")
         if "pdf" in a.formats:
             write_pdf(screens, tree, images, stem.with_suffix(".pdf"), *size)
             print(f"  wrote {stem.with_suffix('.pdf')}")
+
+
+def _cover_png(key: str, device, cache: Path, fonts) -> bytes:
+    import io
+
+    qcf4 = sources.fetch("quran-qcf4", cache)
+    amiri = sources.fetch("amiri-quran", cache) / "files" / "amiri-quran-arabic-400-normal.woff2"
+    img = render_cover(key, device.width, device.height, qcf4 / "fonts-woff2", amiri, *fonts)
+    buf = io.BytesIO()
+    img.save(buf, "PNG", optimize=True)
+    return buf.getvalue()
+
+
+def _text_book(book, a, device, ui_font, fonts, wanted):
+    """A text edition (real, highlightable text) as EPUB and/or PDF."""
+    qcf4 = sources.fetch("quran-qcf4", a.cache)
+    mushaf = load(qcf4, sources.fetch("quran-meta", a.cache))
+
+    def renderer(dev):
+        args = (mushaf, qcf4 / "fonts-woff2", dev, ui_font, a.text_scale, a.script_scale)
+        if book == "companion-text":
+            glosses = load_glosses(mushaf, sources.fetch("quran-wbw", a.cache))
+            return CompanionRenderer(*args, glosses=glosses, gloss_font=fonts[0], gloss_italic=fonts[1])
+        if book == "translation-text":
+            verses, names = load_translation(sources.fetch("quran-cloud", a.cache))
+            return TranslationRenderer(*args, verses=verses, names=names, serif=fonts[0], italic=fonts[1],
+                                       bold=fonts[2])
+        return Renderer(*args)
+
+    def screens(r):
+        if book == "mushaf-text":
+            return textbook.mushaf_screens(r, wanted)
+        return [s for n in wanted for s in r.screens_ops(r.mushaf.pages[n - 1])]
+
+    tree = toc_tree(mushaf, pages=book != "mushaf-text")
+    stem = a.out / a.device / f"{book}-{a.device}{'-sample' if a.pages else ''}"
+    stem.parent.mkdir(parents=True, exist_ok=True)
+    print(f"{book}: laying out {len(wanted)} pages for {device.name}")
+    if "epub" in a.formats:
+        cover = _cover_png(TEXT_BOOKS[book], device, a.cache, fonts)
+        textbook.build(screens(renderer(device)), tree, stem.with_suffix(".epub"), device.width, device.height,
+                       TITLES[book], a.cache / "ttf", cover)
+        print(f"  wrote {stem.with_suffix('.epub')}")
+    if "pdf" in a.formats:
+        # === optionally shorter, to leave room below the page for a reader's progress bar ===
+        short = Device(device.name, device.width, round(device.height * (1 - a.pdf_footer)))
+        textbook.build_pdf(screens(renderer(short)), tree, stem.with_suffix(".pdf"), short.width, short.height,
+                           TITLES[book], a.cache / "ttf")
+        print(f"  wrote {stem.with_suffix('.pdf')}")
 
 
 if __name__ == "__main__":

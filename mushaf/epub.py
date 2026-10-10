@@ -122,7 +122,7 @@ def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: in
     spine = []
     for i, s in enumerate(screens):
         if images:
-            props = ' properties="cover-image"' if i == 0 else ""
+            props = ' properties="cover-image"' if i == 0 and not cover else ""
             manifest.append(f'<item id="i{s.stem}" href="img/{s.stem}.png" media-type="image/png"{props}/>')
         manifest.append(f'<item id="{s.stem}" href="text/{s.stem}.xhtml" media-type="application/xhtml+xml"/>')
         spine.append(f'<itemref idref="{s.stem}"/>')

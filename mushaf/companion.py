@@ -1,8 +1,8 @@
 """Word-by-word companion: each mushaf line with an English gloss under every word.
 
-A mushaf page needs about twice a screen's area at readable sizes, so each
-page becomes two screens (lines 1-8, then 9-15). Both screens carry the
-page's number as their label, so "Go to page 50" can still find page 50.
+A mushaf page needs about three screens' area at readable sizes, so each
+page becomes three screens of five lines. Every screen carries the page's
+number as its label, so "Go to page 50" can still find page 50.
 """
 from PIL import Image, ImageDraw, ImageFont
 
@@ -10,12 +10,13 @@ from .data import Page
 from .render import INK, PAPER, Renderer, ink_centered, quantize
 
 GLOSS_INK = 48
-SPLIT = 8  # === lines on the first screen of a page ===
 
 
 class CompanionRenderer(Renderer):
-    def __init__(self, *args, glosses: dict, gloss_font: str, gloss_italic: str, **kw):
+    def __init__(self, *args, glosses: dict, gloss_font: str, gloss_italic: str,
+                 lines_per_screen: int = 5, gloss_scale: float = 0.04, **kw):
         super().__init__(*args, **kw)
+        self.lines_per_screen = lines_per_screen
         self.glosses = glosses
         self.gloss_font = gloss_font
         self.gloss_italic = gloss_italic
@@ -24,18 +25,39 @@ class CompanionRenderer(Renderer):
         self.margin = round(w * 0.04)
         self.width = w - 2 * self.margin
         self.ar_size = round(w * 0.052)
-        self.gloss_size = round(w * 0.0235)
+        # === about 10 pt on a 6-inch 167-ppi screen ===
+        self.gloss_size = round(w * gloss_scale)
+
+    def parts(self, page: Page) -> list:
+        n = self.lines_per_screen
+        return [page.lines[i:i + n] for i in range(0, len(page.lines), n)]
 
     def screens(self, page: Page) -> list:
-        lines = page.lines
-        parts = [lines] if len(lines) <= SPLIT else [lines[:SPLIT], lines[SPLIT:]]
-        return [self._screen(page, part, i, len(parts)) for i, part in enumerate(parts)]
+        """The page's screens as images."""
+        parts = self.parts(page)
+        out = []
+        for i, part in enumerate(parts):
+            img = Image.new("L", (self.device.width, self.device.height), PAPER)
+            self.draw_screen(ImageDraw.Draw(img), page, part, i, len(parts))
+            out.append(quantize(img))
+        return out
+
+    def screens_ops(self, page: Page) -> list:
+        """The page's screens as (Screen, recorded ops), for the text edition."""
+        from .epub import Screen
+        from .textbook import Recorder
+
+        parts = self.parts(page)
+        out = []
+        for i, part in enumerate(parts):
+            rec = Recorder()
+            self.draw_screen(rec, page, part, i, len(parts))
+            out.append((Screen(f"c{page.number:03d}{chr(ord('a') + i)}", page.number, i == 0), rec.ops))
+        return out
 
     # === one screen ===
 
-    def _screen(self, page, lines, index, count):
-        img = Image.new("L", (self.device.width, self.device.height), PAPER)
-        draw = ImageDraw.Draw(img)
+    def draw_screen(self, draw, page, lines, index, count):
         label = "Word by word" + (f" · {index + 1} of {count}" if count > 1 else "")
         italic = ImageFont.truetype(self.gloss_italic, round(self.top * 0.4))
 
@@ -59,7 +81,6 @@ class CompanionRenderer(Renderer):
         for row in rows:
             self._draw_row(draw, row, y)
             y += row["height"] + gap
-        return quantize(img)
 
     def _layout(self, line, scale):
         words = line["words"]

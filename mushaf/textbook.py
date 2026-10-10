@@ -82,15 +82,16 @@ def to_html(ops, is_text_font=lambda family: True) -> tuple:
         elif op[0] == "text":
             _, (x, y), text, font, fill, anchor, direction = op
             kw = {"direction": direction} if direction else {}
-            # === move the anchor point to the left end of the baseline, where CSS text starts ===
+            # === from the anchor point to the left end of the baseline, where CSS text starts ===
             left_a, top_a = font.getbbox(text, anchor=anchor, **kw)[:2]
             left_s, top_s = font.getbbox(text, anchor="ls", **kw)[:2]
-            x += left_s - left_a
-            y += top_s - top_a
+            x += left_a - left_s
+            y += top_a - top_s
             ascent, descent = font.getmetrics()
             family = font_family(font)
             chars.setdefault(family, set()).update(text)
-            dir_attr = ' dir="rtl"' if direction == "rtl" else ""
+            # === explicit direction: inside the book's RTL pages, English punctuation would flip ===
+            dir_attr = ' dir="rtl"' if direction == "rtl" else ' dir="ltr"'
             # === trailing space = word boundary, so highlights don't snap to whole lines ===
             out.append(
                 f'<span{dir_attr} style="left:{x:.1f}px;top:{y - ascent:.1f}px;'
@@ -155,31 +156,49 @@ def _prune(tree: list, keep: set) -> list:
     return out
 
 
-def build(renderer, out: Path, tree: list, title: str, font_cache: Path, pages: list = None) -> None:
-    """Write the text edition of the mushaf as a fixed-layout EPUB (optionally only some pages)."""
-    from .epub import Screen, write_epub
+def is_text_font(family: str) -> bool:
+    """Fonts kept as real text: the mushaf glyphs and the English serif.
 
-    w, h = renderer.device.width, renderer.device.height
-    wanted = set(pages or range(1, len(renderer.mushaf.pages) + 1))
-    tree = _prune(tree, wanted)
-    screens, assets, chars = [], {}, {}
-    for page in renderer.mushaf.pages:
-        if page.number not in wanted:
-            continue
-        rec = Recorder()
-        renderer.draw_page(rec, page)
-        body, used, labels = to_html(rec.ops, is_text_font=lambda family: family.startswith("QCF"))
-        stem = f"p{page.number:03d}"
-        body = body.replace("{img}", f"../img/{stem}")
+    The UI font's Arabic labels need shaping that readers apply unpredictably,
+    so they become tiny images instead.
+    """
+    return family.startswith(("QCF", "Liberation", "DejaVuSerif", "Times", "times"))
+
+
+def _fonts(screens_ops, font_cache: Path) -> dict:
+    """Subset TTF (path) for every text font the screens use."""
+    chars, paths = {}, {}
+    for _, ops in screens_ops:
+        for op in ops:
+            if op[0] == "text" and is_text_font(font_family(op[3])):
+                family = font_family(op[3])
+                chars.setdefault(family, set()).update(op[2])
+                paths[family] = Path(op[3].path)
+    return {family: _ttf(paths[family], cs, font_cache) for family, cs in sorted(chars.items())}
+
+
+def build(screens_ops: list, tree: list, out: Path, w: int, h: int, title: str, font_cache: Path,
+          cover_png: bytes) -> None:
+    """Write a text edition as a fixed-layout EPUB.
+
+    screens_ops is a list of (Screen, recorded ops) in reading order; the
+    cover appears only in the library, so page numbering is unaffected.
+    """
+    from .epub import write_epub
+
+    tree = _prune(tree, {screen.page for screen, _ in screens_ops})
+    screens, assets = [], {}
+    for screen, ops in screens_ops:
+        body, _, labels = to_html(ops, is_text_font=is_text_font)
+        body = body.replace("{img}", f"../img/{screen.stem}")
         for name, png in labels.items():
-            assets[f"img/{stem}{name}.png"] = ("image/png", png)
-        for family, cs in used.items():
-            chars.setdefault(family, set()).update(cs)
-        screens.append(Screen(stem, page.number, True, body=f'<div class="page">{body}</div>'))
+            assets[f"img/{screen.stem}{name}.png"] = ("image/png", png)
+        screen.body = f'<div class="page">{body}</div>'
+        screens.append(screen)
 
     faces = []
-    for family, cs in sorted(chars.items()):
-        assets[f"fonts/{family}.ttf"] = ("font/ttf", _ttf(renderer.fonts / f"{family}.woff2", cs, font_cache).read_bytes())
+    for family, path in _fonts(screens_ops, font_cache).items():
+        assets[f"fonts/{family}.ttf"] = ("font/ttf", path.read_bytes())
         faces.append(f"@font-face{{font-family:'{family}';src:url(fonts/{family}.ttf)}}")
     css = "\n".join(faces) + f"""
 html,body{{margin:0;padding:0}}
@@ -187,53 +206,60 @@ html,body{{margin:0;padding:0}}
 .page span,.page div,.page img{{position:absolute;white-space:nowrap;margin:0;padding:0;box-sizing:border-box}}
 """
     assets["style.css"] = ("text/css", css.encode())
-    cover = io.BytesIO()
-    renderer.render(renderer.mushaf.pages[0]).save(cover, "PNG", optimize=True)
-    assets["img/cover.png"] = ("image/png", cover.getvalue())
+    assets["img/cover.png"] = ("image/png", cover_png)
     write_epub(screens, tree, None, out, w, h, title, assets=assets, cover="img/cover.png",
                head='<link rel="stylesheet" type="text/css" href="../style.css"/>', comic=False)
 
 
-def build_pdf(renderer, out: Path, tree: list, title: str, font_cache: Path, pages: list = None) -> None:
-    """Write the text edition as a PDF: the same positioned glyphs, with the fonts embedded.
+def build_pdf(screens_ops: list, tree: list, out: Path, w: int, h: int, title: str, font_cache: Path) -> None:
+    """Write a text edition as a PDF: the same positioned glyphs, with the fonts embedded.
 
     Kindle's PDF reader allows highlights and notes on real text, and a PDF
-    keeps every glyph exactly where it is placed.
+    keeps every glyph exactly where it is placed. It starts on the first
+    mushaf page; a cover would shift every page by one.
     """
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
-    from .epub import Screen
     from .pdf import write_pdf
 
-    w, h = renderer.device.width, renderer.device.height
-    wanted = set(pages or range(1, len(renderer.mushaf.pages) + 1))
-    recorded, chars = {}, {}
-    for page in renderer.mushaf.pages:
-        if page.number in wanted:
-            rec = Recorder()
-            renderer.draw_page(rec, page)
-            recorded[page.number] = rec.ops
-            for op in rec.ops:
-                if op[0] == "text" and font_family(op[3]).startswith("QCF"):
-                    chars.setdefault(font_family(op[3]), set()).update(op[2])
-    for family, cs in chars.items():
-        path = _ttf(renderer.fonts / f"{family}.woff2", cs, font_cache)
-        pdfmetrics.registerFont(TTFont(family, str(path)))
+    # === register each subset under its own name: reportlab keeps the first font of a name ===
+    names = {}
+    for family, path in _fonts(screens_ops, font_cache).items():
+        names[family] = path.stem
+        if path.stem not in pdfmetrics.getRegisteredFontNames():
+            pdfmetrics.registerFont(TTFont(path.stem, str(path)))
+    ops_of = {screen.stem: ops for screen, ops in screens_ops}
 
     def paint(c, screen, k):
-        paint_ops(c, recorded[screen.page], h, k)
+        paint_ops(c, ops_of[screen.stem], h, k, names)
 
-    screens = [Screen(f"p{n:03d}", n, True) for n in sorted(wanted)]
-    write_pdf(screens, _prune(tree, wanted), None, out, w, h, title, paint=paint)
+    screens = [screen for screen, _ in screens_ops]
+    write_pdf(screens, _prune(tree, {s.page for s in screens}), None, out, w, h, title, paint=paint)
 
 
-def paint_ops(c, ops, h: int, k: float) -> None:
-    """Draw recorded ops onto a reportlab canvas; k converts pixels to points."""
+def mushaf_screens(renderer, pages) -> list:
+    """(Screen, ops) for each mushaf page."""
+    from .epub import Screen
+
+    out = []
+    for n in pages:
+        rec = Recorder()
+        renderer.draw_page(rec, renderer.mushaf.pages[n - 1])
+        out.append((Screen(f"p{n:03d}", n, True), rec.ops))
+    return out
+
+
+def paint_ops(c, ops, h: int, k: float, names: dict = None) -> None:
+    """Draw recorded ops onto a reportlab canvas; k converts pixels to points.
+
+    names maps a font family to the name its subset was registered under.
+    """
+    names = names or {}
     from reportlab.lib.utils import ImageReader
 
     for op in ops:
-        if op[0] == "text" and not font_family(op[3]).startswith("QCF"):
+        if op[0] == "text" and not is_text_font(font_family(op[3])):
             # === header labels: tiny images, as in the EPUB (reportlab can't shape Arabic) ===
             box, png = _label_png(op)
             c.drawImage(ImageReader(io.BytesIO(png)), box[0] * k, (h - box[3]) * k,
@@ -243,8 +269,8 @@ def paint_ops(c, ops, h: int, k: float) -> None:
             left_a, top_a = font.getbbox(text, anchor=anchor)[:2]
             left_s, top_s = font.getbbox(text, anchor="ls")[:2]
             c.setFillGray(fill / 255)
-            c.setFont(font_family(font), font.size * k)
-            c.drawString((x + left_s - left_a) * k, (h - (y + top_s - top_a)) * k, text)
+            c.setFont(names.get(font_family(font), font_family(font)), font.size * k)
+            c.drawString((x + left_a - left_s) * k, (h - (y + top_a - top_s)) * k, text)
         elif op[0] == "line":
             # === filled strips, not strokes: adjacent shadow columns then meet without gaps ===
             _, (x0, y0, x1, y1), fill, width = op
