@@ -126,7 +126,7 @@ class TranslationRenderer(Renderer):
         self.serif, self.italic, self.bold, self.symbol = serif, italic, bold, symbol
         # === {verse_key: main topic entries} and {entry: index screen stem}, set once the index is laid out ===
         self.topics, self.entries = {}, {}
-        self.column_share = 0.3  # === share of the text width given to the topic column ===
+        self.column_share = 0.22  # === share of the text width given to the topic column ===
         w, h = self.device.width, self.device.height
         self.side = round(w * 0.07)
         self.text_top = self.top + h * 0.025
@@ -392,10 +392,12 @@ class TranslationRenderer(Renderer):
             words = name.split() + (["·"] if i < len(names) - 1 else [])
             for j, word in enumerate(words):
                 w = font.getlength(word)
-                if line and x + w > width:
+                separator = j == len(words) - 1 and i < len(names) - 1
+                # === a separating dot stays at the end of its line, never opens the next ===
+                if line and x + w > width and not separator:
                     lines.append(line)
                     line, x = [], 0.0
-                line.append((x, word, None if j == len(words) - 1 and i < len(names) - 1 else target))
+                line.append((x, word, None if separator else target))
                 x += w + space
         if line:
             lines.append(line)
