@@ -38,8 +38,8 @@ jobs:
           key: sources-${{ hashFiles('mushaf/sources.py', 'mushaf/textbook.py') }}
       - name: Build image books
         run: python -m mushaf --device ${{ matrix.device }}
-      - name: Build text edition (EPUB and PDF)
-        run: python -m mushaf --device ${{ matrix.device }} --book mushaf-text
+      - name: Build text editions (EPUB and PDF)
+        run: python -m mushaf --device ${{ matrix.device }} --book mushaf-text,companion-text,translation-text
       - uses: actions/upload-artifact@v4
         with:
           name: books-${{ matrix.device }}
