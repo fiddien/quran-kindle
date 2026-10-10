@@ -24,7 +24,8 @@ class CompanionRenderer(Renderer):
         # === narrower margins than the mushaf: glosses need the width ===
         self.margin = round(w * 0.04)
         self.width = w - 2 * self.margin
-        self.ar_size = round(w * 0.052)
+        # === one Arabic size for the whole book; only rare, very dense rows go smaller ===
+        self.ar_size = round(w * 0.044)
         # === about 8.6 pt on a 6-inch 167-ppi screen ===
         self.gloss_size = round(w * gloss_scale)
 
@@ -93,16 +94,16 @@ class CompanionRenderer(Renderer):
 
         # === wrap glosses narrower, then shrink them, until the row fits the width ===
         # === as a last resort, shrink the Arabic of a very dense line too ===
-        # === and if even that fails, shrink both further until the row is guaranteed to fit ===
-        attempts = [(1.0, f, w) for f in (1.0, 0.92, 0.85, 0.78) for w in (4.5, 3.6, 2.8, 2.2)]
-        attempts += [(a, 0.78, 2.2) for a in (0.94, 0.88, 0.82, 0.76, 0.7)]
-        attempts += [(0.7 * f, 0.78 * f, 2.2) for f in (0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5)]
+        attempts = [(1.0, f, w) for f in (1.0, 0.92, 0.85, 0.78, 0.72) for w in (4.5, 3.6, 2.8, 2.2, 1.6)]
+        attempts += [(a, 0.72, 1.6) for a in (0.94, 0.88, 0.82, 0.76, 0.7, 0.6, 0.5)]
+        # === final safety net for the few rows of long, unbreakable glosses: shrink both ===
+        attempts += [(0.5 * f, 0.72 * f, 1.6) for f in (0.9, 0.8, 0.7, 0.6, 0.5, 0.4)]
         full = ar
         for ar_scale, font_scale, wrap_em in attempts:
             ar = round(full * ar_scale)
             gsize = round(self.gloss_size * scale * font_scale)
             gfont = ImageFont.truetype(self.gloss_font, gsize)
-            min_gap = gsize * 0.6
+            min_gap = gsize * 0.45
             cells = []
             for w in words:
                 font = self.font(w["font"], ar)
