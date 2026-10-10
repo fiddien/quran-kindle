@@ -58,7 +58,8 @@ page 50. `companion-text` is the same book in real text.
 ## Translation
 
 `translation-text` follows each mushaf page with one screen of the Saheeh International
-English translation of the verses on it. A verse that begins on the previous page is
+English translation of the verses on it. Where a surah begins, its heading is followed by
+a short introduction from QUL. A verse that begins on the previous page is
 repeated in full and marked *(continued)*. The type shrinks as needed so a page's
 translation always fits one screen.
 
@@ -100,6 +101,10 @@ The build downloads pinned npm packages and checks each against its sha512 hash:
   translation's rights rest with its original authors;
 - [`quran-cloud`](https://www.npmjs.com/package/quran-cloud) for the Saheeh International
   English translation (Saheeh International, Abul-Qasim Publishing House);
+- [QUL](https://qul.tarteel.ai) (Quranic Universal Library, by Tarteel) for the short
+  English surah introductions. QUL serves its files to signed-in users, so the file is
+  committed under `sources/` and checked against its pinned sha512 hash. The text matches
+  the surah introductions of Sayyid Abul A'la Maududi's *Tafhim al-Qur'an*;
 - [`@fontsource/amiri-quran`](https://fontsource.org/fonts/amiri-quran) and
   [`@fontsource/aref-ruqaa`](https://fontsource.org/fonts/aref-ruqaa) for the cover
   titles (both OFL).

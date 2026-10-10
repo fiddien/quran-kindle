@@ -9,6 +9,11 @@ quran-cloud : Saheeh International English translation, verse by verse.
 
 The fonts are not ours to redistribute, so they are fetched at build time
 into ./cache and never committed.
+
+Files from QUL (qul.tarteel.ai) are downloaded by hand, since QUL serves them
+to signed-in users, and committed under ./sources with their hashes pinned here.
+
+qul-surah-info-en : English surah introductions (QUL "Surah info", English).
 """
 import base64
 import hashlib
@@ -46,6 +51,14 @@ PACKAGES = {
     ),
 }
 
+FILES = {
+    "qul-surah-info-en": (
+        "qul-surah-info-en.csv.zip",
+        "sha512-SLrs0SLMSi2zD5DUwqHbCAVVpJGwz+2weRwPedYZY1mvXO4mCw588HDQ1YyLsfpSs3D9oy/YD8o7QmWpqOmwog==",
+    ),
+}
+COMMITTED = Path(__file__).resolve().parent.parent / "sources"
+
 
 def _verify(blob: bytes, integrity: str) -> None:
     algo, expected = integrity.split("-", 1)
@@ -73,3 +86,11 @@ def fetch(name: str, cache: Path) -> Path:
     shutil.rmtree(dest, ignore_errors=True)
     staging.rename(dest)
     return dest / "package"
+
+
+def local(name: str) -> Path:
+    """Return a committed source file after checking it against its pinned hash."""
+    filename, integrity = FILES[name]
+    path = COMMITTED / filename
+    _verify(path.read_bytes(), integrity)
+    return path

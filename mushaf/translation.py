@@ -1,5 +1,8 @@
 """Arabic with translation: each mushaf page followed by the English of its verses."""
+import csv
+import io
 import json
+import zipfile
 from pathlib import Path
 
 from PIL import ImageFont
@@ -8,6 +11,7 @@ from .companion import wrap
 from .render import INK, Renderer
 
 TEXT_INK = 24
+INTRO_INK = 64
 
 
 def load_translation(cloud: Path) -> tuple:
@@ -20,10 +24,19 @@ def load_translation(cloud: Path) -> tuple:
     return verses, names
 
 
+def load_intros(info: Path) -> dict:
+    """QUL's short English introduction to each surah, as {surah: text}."""
+    csv.field_size_limit(1 << 24)  # === the full introductions run to tens of kilobytes ===
+    with zipfile.ZipFile(info) as z:
+        rows = csv.DictReader(io.TextIOWrapper(z.open("surah-info-en.csv"), encoding="utf-8"))
+        return {int(r["surah_number"]): r["short_text"].strip() for r in rows}
+
+
 class TranslationRenderer(Renderer):
-    def __init__(self, *args, verses: dict, names: dict, serif: str, italic: str, bold: str, **kw):
+    def __init__(self, *args, verses: dict, names: dict, serif: str, italic: str, bold: str,
+                 intros: dict = None, **kw):
         super().__init__(*args, **kw)
-        self.verses, self.names = verses, names
+        self.verses, self.names, self.intros = verses, names, intros or {}
         self.serif, self.italic, self.bold = serif, italic, bold
         w, h = self.device.width, self.device.height
         self.side = round(w * 0.07)
@@ -45,6 +58,8 @@ class TranslationRenderer(Renderer):
                 if ayah == 1:
                     chapter = self.mushaf.chapters[surah - 1]
                     out.append(("heading", f"{chapter.name} · {self.names[surah]}"))
+                    if self.intros.get(surah):
+                        out.append(("intro", self.intros[surah]))
                 continued = w["type"] == "word" and w.get("position", 1) > 1
                 out.append(("verse", ayah, self.verses[key], continued))
         return out
@@ -55,6 +70,7 @@ class TranslationRenderer(Renderer):
         number = ImageFont.truetype(self.bold, size)
         note = ImageFont.truetype(self.italic, size)
         heading = ImageFont.truetype(self.bold, round(size * 1.1))
+        intro = ImageFont.truetype(self.italic, round(size * 0.9))
         width = self.device.width - 2 * self.side
         leading = size * 1.32
         rows = []
@@ -63,6 +79,12 @@ class TranslationRenderer(Renderer):
                 rows.append(("space", leading * 0.4))
                 rows.append(("center", block[1], heading, leading * 1.25))
                 rows.append(("space", leading * 0.2))
+                continue
+            if block[0] == "intro":
+                # === the surah's introduction, set apart from the verses in smaller gray italic ===
+                for line in wrap(block[1], intro, width):
+                    rows.append(("intro", line, intro, leading * 0.9))
+                rows.append(("space", leading * 0.6))
                 continue
             _, ayah, text, continued = block
             prefix = f"{ayah} "
@@ -116,7 +138,8 @@ class TranslationRenderer(Renderer):
                     x += part[2].getlength(part[1])
                 draw.text((x, base), text, font=body, fill=TEXT_INK, anchor="ls")
             else:
-                draw.text((x0, base), row[1], font=row[2], fill=TEXT_INK, anchor="ls")
+                ink = INTRO_INK if row[0] == "intro" else TEXT_INK
+                draw.text((x0, base), row[1], font=row[2], fill=ink, anchor="ls")
             y += _height(row)
 
     def screens_ops(self, page) -> list:
