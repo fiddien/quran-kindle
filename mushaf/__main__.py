@@ -7,7 +7,7 @@ from pathlib import Path
 from . import sources, textbook
 from .companion import CompanionRenderer
 from .cover import _rosette as render_rosette
-from .translation import TranslationRenderer, load_intros, load_translation
+from .translation import TranslationRenderer, load_footnoted, load_intros, load_translation
 from .data import PAGE_COUNT, load, load_glosses
 from .epub import Screen, toc_tree, write_epub
 from .pdf import write_pdf
@@ -173,10 +173,12 @@ def _text_book(book, a, device, ui_font, fonts, wanted):
             glosses = load_glosses(mushaf, sources.fetch("quran-wbw", a.cache))
             return CompanionRenderer(*args, glosses=glosses, gloss_font=fonts[0], gloss_italic=fonts[1])
         if book == "translation-text":
-            verses, names = load_translation(sources.fetch("quran-cloud", a.cache))
+            _, names = load_translation(sources.fetch("quran-cloud", a.cache))
+            verses, notes = load_footnoted(sources.local("qul-saheeh"))
             intros = load_intros(sources.local("qul-surah-info-en"))
+            amiri = sources.fetch("amiri-quran", a.cache) / "files" / "amiri-quran-arabic-400-normal.woff2"
             return TranslationRenderer(*args, verses=verses, names=names, serif=fonts[0], italic=fonts[1],
-                                       bold=fonts[2], intros=intros)
+                                       bold=fonts[2], intros=intros, notes=notes, symbol=str(amiri))
         return Renderer(*args)
 
     def screens(r):

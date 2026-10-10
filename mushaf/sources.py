@@ -5,7 +5,7 @@ quran-meta  : juz' and hizb-quarter boundaries (absolute ayah numbers).
 quran-wbw   : English word-by-word glosses (a dump of quran.com's word data).
 amiri-quran : Amiri Quran typeface (OFL), fallback for Arabic titles.
 aref-ruqaa  : Aref Ruqaa typeface (OFL) for the ruq'ah title on the covers.
-quran-cloud : Saheeh International English translation, verse by verse.
+quran-cloud : English surah names (and a plain Saheeh International text).
 
 The fonts are not ours to redistribute, so they are fetched at build time
 into ./cache and never committed.
@@ -14,6 +14,7 @@ Files from QUL (qul.tarteel.ai) are downloaded by hand, since QUL serves them
 to signed-in users, and committed under ./sources with their hashes pinned here.
 
 qul-surah-info-en : English surah introductions (QUL "Surah info", English).
+qul-saheeh        : Saheeh International English with the translator's footnotes.
 """
 import base64
 import hashlib
@@ -55,6 +56,10 @@ FILES = {
     "qul-surah-info-en": (
         "qul-surah-info-en.csv.zip",
         "sha512-SLrs0SLMSi2zD5DUwqHbCAVVpJGwz+2weRwPedYZY1mvXO4mCw588HDQ1YyLsfpSs3D9oy/YD8o7QmWpqOmwog==",
+    ),
+    "qul-saheeh": (
+        "qul-en-sahih-international-with-footnote-tags.db.zip",
+        "sha512-0oEr3ETmDqSHrTbzNc52eW0kLXnIehwlj34YgTqYEoQlIcF0IcFjoyeybW8L3PuoQ+W83BpZM70ad25q4OEOcw==",
     ),
 }
 COMMITTED = Path(__file__).resolve().parent.parent / "sources"
