@@ -89,13 +89,8 @@ class Renderer:
         self.draw_page(ImageDraw.Draw(img), page)
         return quantize(img)
 
-    def link_target(self, page: Page):
-        """Screen a verse marker on this page jumps to; None for no links."""
-        return None
-
     def draw_page(self, draw, page: Page) -> None:
         """Draw one page onto anything with ImageDraw's text/line/rectangle methods."""
-        self._target = self.link_target(page) if hasattr(draw, "link") else None
         self.frame(draw, page)
         if len(page.lines) == 15:
             slots = [self.lines_top + i * self.pitch for i in range(15)]
@@ -138,11 +133,8 @@ class Renderer:
         # === Arabic runs right to left: place each glyph leftwards from the right edge. ===
         for word, width in zip(words, widths):
             x -= width
-            font = self.font(word["font"], size)
-            draw.text((x, base), word["char"], font=font, fill=INK, anchor="ls")
-            if word["type"] == "end" and getattr(self, "_target", None):
-                left, top, right, bottom = font.getbbox(word["char"], anchor="ls")
-                draw.link((x + left, base + top, x + right, base + bottom), self._target)
+            draw.text((x, base), word["char"], font=self.font(word["font"], size),
+                      fill=INK, anchor="ls")
             x -= gap
 
     def surah_banner(self, draw, word, y, h):

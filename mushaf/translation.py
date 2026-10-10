@@ -32,9 +32,6 @@ class TranslationRenderer(Renderer):
         # === start near 10 pt on a 6-inch 167-ppi screen and shrink until the page's verses fit ===
         self.sizes = range(round(w * 0.04), round(w * 0.015), -1)
 
-    def link_target(self, page):
-        return f"t{page.number:03d}a"
-
     def blocks(self, page) -> list:
         """Surah headings and verses on the page, in reading order."""
         out, seen = [], set()
@@ -116,11 +113,6 @@ class TranslationRenderer(Renderer):
                 for part in parts:
                     draw.text((x, base), part[1], font=part[2], fill=INK if part[0] == "number" else 96,
                               anchor="ls")
-                    if part[0] == "number" and hasattr(draw, "link"):
-                        # === the verse number jumps back to the mushaf page, with a generous tap area ===
-                        size = part[2].size
-                        draw.link((x - size * 0.4, base - size * 1.1, x + part[2].getlength(part[1]) + size * 0.2,
-                                   base + size * 0.4), f"p{page.number:03d}")
                     x += part[2].getlength(part[1])
                 draw.text((x, base), text, font=body, fill=TEXT_INK, anchor="ls")
             else:
