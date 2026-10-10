@@ -200,7 +200,6 @@ def build_pdf(renderer, out: Path, tree: list, title: str, font_cache: Path, pag
     Kindle's PDF reader allows highlights and notes on real text, and a PDF
     keeps every glyph exactly where it is placed.
     """
-    from reportlab.lib.utils import ImageReader
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
 
@@ -223,34 +222,41 @@ def build_pdf(renderer, out: Path, tree: list, title: str, font_cache: Path, pag
         pdfmetrics.registerFont(TTFont(family, str(path)))
 
     def paint(c, screen, k):
-        for op in recorded[screen.page]:
-            if op[0] == "text" and not font_family(op[3]).startswith("QCF"):
-                # === header labels: tiny images, as in the EPUB (reportlab can't shape Arabic) ===
-                box, png = _label_png(op)
-                c.drawImage(ImageReader(io.BytesIO(png)), box[0] * k, (h - box[3]) * k,
-                            (box[2] - box[0]) * k, (box[3] - box[1]) * k)
-            elif op[0] == "text":
-                _, (x, y), text, font, fill, anchor, direction = op
-                left_a, top_a = font.getbbox(text, anchor=anchor)[:2]
-                left_s, top_s = font.getbbox(text, anchor="ls")[:2]
-                c.setFillGray(fill / 255)
-                c.setFont(font_family(font), font.size * k)
-                c.drawString((x + left_s - left_a) * k, (h - (y + top_s - top_a)) * k, text)
-            elif op[0] == "line":
-                # === filled strips, not strokes: adjacent shadow columns then meet without gaps ===
-                _, (x0, y0, x1, y1), fill, width = op
-                if y0 == y1:
-                    box = (min(x0, x1), y0 - width / 2, abs(x1 - x0), width)
-                else:
-                    box = (x0 - width / 2, min(y0, y1), width, abs(y1 - y0))
-                c.setFillGray(fill / 255)
-                c.rect(box[0] * k, (h - box[1] - box[3]) * k, box[2] * k, box[3] * k, stroke=0, fill=1)
-            elif op[0] == "rect":
-                _, (x0, y0, x1, y1), outline, width, radius, fill = op
-                c.setStrokeGray((outline if outline is not None else 255) / 255)
-                c.setLineWidth(width * k)
-                c.roundRect(x0 * k, (h - y1) * k, (x1 - x0) * k, (y1 - y0) * k, radius * k,
-                            stroke=1 if outline is not None else 0, fill=0)
+        paint_ops(c, recorded[screen.page], h, k)
 
     screens = [Screen(f"p{n:03d}", n, True) for n in sorted(wanted)]
     write_pdf(screens, _prune(tree, wanted), None, out, w, h, title, paint=paint)
+
+
+def paint_ops(c, ops, h: int, k: float) -> None:
+    """Draw recorded ops onto a reportlab canvas; k converts pixels to points."""
+    from reportlab.lib.utils import ImageReader
+
+    for op in ops:
+        if op[0] == "text" and not font_family(op[3]).startswith("QCF"):
+            # === header labels: tiny images, as in the EPUB (reportlab can't shape Arabic) ===
+            box, png = _label_png(op)
+            c.drawImage(ImageReader(io.BytesIO(png)), box[0] * k, (h - box[3]) * k,
+                        (box[2] - box[0]) * k, (box[3] - box[1]) * k)
+        elif op[0] == "text":
+            _, (x, y), text, font, fill, anchor, direction = op
+            left_a, top_a = font.getbbox(text, anchor=anchor)[:2]
+            left_s, top_s = font.getbbox(text, anchor="ls")[:2]
+            c.setFillGray(fill / 255)
+            c.setFont(font_family(font), font.size * k)
+            c.drawString((x + left_s - left_a) * k, (h - (y + top_s - top_a)) * k, text)
+        elif op[0] == "line":
+            # === filled strips, not strokes: adjacent shadow columns then meet without gaps ===
+            _, (x0, y0, x1, y1), fill, width = op
+            if y0 == y1:
+                box = (min(x0, x1), y0 - width / 2, abs(x1 - x0), width)
+            else:
+                box = (x0 - width / 2, min(y0, y1), width, abs(y1 - y0))
+            c.setFillGray(fill / 255)
+            c.rect(box[0] * k, (h - box[1] - box[3]) * k, box[2] * k, box[3] * k, stroke=0, fill=1)
+        elif op[0] == "rect":
+            _, (x0, y0, x1, y1), outline, width, radius, fill = op
+            c.setStrokeGray((outline if outline is not None else 255) / 255)
+            c.setLineWidth(width * k)
+            c.roundRect(x0 * k, (h - y1) * k, (x1 - x0) * k, (y1 - y0) * k, radius * k,
+                        stroke=1 if outline is not None else 0, fill=0)
