@@ -28,8 +28,9 @@ Pick the files that match your screen:
 
 Each size comes as three books:
 
-- `mushaf-text-….pdf`: the mushaf as real text, so you can highlight words and add
-  notes. Copy it over USB into the Kindle's `documents` folder.
+- `mushaf-text-….epub` and `.pdf`: the mushaf as real text, so you can highlight and add
+  notes. The EPUB is faster and highlights whole lines; the PDF highlights single words.
+  Copy the PDF over USB into the Kindle's `documents` folder.
 - `mushaf-….epub` and `.pdf`: the mushaf as page images.
 - `companion-….epub` and `.pdf`: the word-by-word companion.
 
@@ -37,7 +38,8 @@ Each size comes as three books:
 
 In `mushaf-text` every word is real text in the King Fahd Complex font, placed exactly
 where the printed mushaf has it, so the page looks the same as the image edition. Kindle's
-PDF reader can highlight single words and attach notes to them. In the notes list and in "My Clippings", highlighted Qur'an text shows as codes rather than
+PDF reader can highlight single words and attach notes to them; in the EPUB, highlights
+cover whole lines. In the notes list and in "My Clippings", highlighted Qur'an text shows as codes rather than
 Arabic, because those views don't use the book's font.
 
 ## Word-by-word companion
