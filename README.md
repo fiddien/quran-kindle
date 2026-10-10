@@ -46,7 +46,7 @@ python -m mushaf --text-scale 0.85            # smaller script, more space betwe
 ```
 
 Devices: `paperwhite` (2021+),
-`paperwhite-old`, `kindle`, `oasis`, `scribe`, `kobo-clara`, `kobo-libra`.
+`paperwhite-old`, `kindle` (2022+), `kindle-2019`, `oasis`, `scribe`, `kobo-clara`, `kobo-libra`.
 
 Pushing a tag such as `v1.0.0`, or running the *Build books* workflow by hand with a
 release version, makes GitHub Actions build the `paperwhite`, `kindle` and

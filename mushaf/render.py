@@ -24,6 +24,7 @@ DEVICES = {
     "paperwhite": Device("Kindle Paperwhite (2021+), 6.8in 300ppi", 1236, 1648),
     "paperwhite-old": Device("Kindle Paperwhite 3/4, 6in 300ppi", 1072, 1448),
     "kindle": Device("Kindle Basic (2022+), 6in 300ppi", 1072, 1448),
+    "kindle-2019": Device("Kindle Basic 10th gen (2019), 6in 167ppi", 600, 800),
     "oasis": Device("Kindle Oasis, 7in 300ppi", 1264, 1680),
     "scribe": Device("Kindle Scribe, 10.2in 300ppi", 1860, 2480),
     "kobo-clara": Device("Kobo Clara HD/2E/BW, 6in 300ppi", 1072, 1448),
