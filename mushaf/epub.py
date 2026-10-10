@@ -22,20 +22,25 @@ class Screen:
     stem: str  # === file name without extension, e.g. p050 or c050b ===
     page: int  # === mushaf page shown on this screen ===
     first: bool  # === True for the screen where the page begins ===
+    body: str = ""  # === page markup for text editions; empty means the screen's PNG fills the page ===
 
 
-def _page_xhtml(screen: Screen, w: int, h: int) -> str:
+def _page_xhtml(screen: Screen, w: int, h: int, head: str) -> str:
     mark = (f'<span epub:type="pagebreak" id="page{screen.page}" title="{screen.page}" role="doc-pagebreak"></span>'
             if screen.first else "")
+    body = screen.body or f'<img class="full" src="../img/{screen.stem}.png" alt="{screen.page}"/>'
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ar" dir="rtl">
 <head><title>{screen.page}</title><meta name="viewport" content="width={w}, height={h}"/>
-<style>html,body{{margin:0;padding:0}} img{{position:absolute;top:0;left:0;width:{w}px;height:{h}px}}</style>
+{head}
 </head>
-<body><div>{mark}<img src="../img/{screen.stem}.png" alt="{screen.page}"/></div></body>
+<body>{mark}{body}</body>
 </html>
 """
+
+
+IMAGE_HEAD = "<style>html,body{margin:0;padding:0} img.full{position:absolute;top:0;left:0;width:100%;height:100%}</style>"
 
 
 def toc_tree(mushaf: Mushaf, pages: bool = False) -> list:
@@ -96,7 +101,17 @@ def _ncx_points(entries, href, counter) -> str:
 
 
 def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: int,
-               title: str) -> None:
+               title: str, *, assets: dict = None, cover: str = None, head: str = IMAGE_HEAD,
+               comic: bool = True) -> None:
+    """Write the book.
+
+    Image editions pass `images`, a folder with one PNG per screen. Text
+    editions pass images=None plus `assets` ({path inside OEBPS: (media type,
+    bytes)}) holding fonts, stylesheet and label images, and name the `cover`
+    image among them. comic=False leaves out the comic book-type, so the
+    reader treats the pages as text that can be highlighted.
+    """
+    assets = assets or {}
     book_id = f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, 'quran-kindle/' + title)}"
     modified = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     href = {s.page: f"text/{s.stem}.xhtml" for s in reversed(screens)}
@@ -106,11 +121,19 @@ def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: in
                 '<item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml"/>']
     spine = []
     for i, s in enumerate(screens):
-        props = ' properties="cover-image"' if i == 0 else ""
-        manifest.append(f'<item id="i{s.stem}" href="img/{s.stem}.png" media-type="image/png"{props}/>')
+        if images:
+            props = ' properties="cover-image"' if i == 0 else ""
+            manifest.append(f'<item id="i{s.stem}" href="img/{s.stem}.png" media-type="image/png"{props}/>')
         manifest.append(f'<item id="{s.stem}" href="text/{s.stem}.xhtml" media-type="application/xhtml+xml"/>')
         spine.append(f'<itemref idref="{s.stem}"/>')
+    asset_ids = {}
+    for i, (path, (media, _)) in enumerate(sorted(assets.items())):
+        asset_ids[path] = f"a{i}"
+        props = ' properties="cover-image"' if path == cover else ""
+        manifest.append(f'<item id="a{i}" href="{path}" media-type="{media}"{props}/>')
+    cover_id = asset_ids[cover] if cover else f"i{screens[0].stem}"
 
+    comic_meta = '<meta name="book-type" content="comic"/>\n' if comic else ""
     opf = f"""<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid" xml:lang="ar" dir="rtl">
 <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
@@ -122,11 +145,10 @@ def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: in
 <meta property="rendition:layout">pre-paginated</meta>
 <meta property="rendition:spread">none</meta>
 <meta property="rendition:orientation">portrait</meta>
-<meta name="cover" content="i{screens[0].stem}"/>
+<meta name="cover" content="{cover_id}"/>
 <meta name="fixed-layout" content="true"/>
 <meta name="original-resolution" content="{w}x{h}"/>
-<meta name="book-type" content="comic"/>
-<meta name="primary-writing-mode" content="horizontal-rl"/>
+{comic_meta}<meta name="primary-writing-mode" content="horizontal-rl"/>
 <meta name="zero-gutter" content="true"/>
 <meta name="zero-margin" content="true"/>
 <meta name="ke-border-color" content="#FFFFFF"/>
@@ -183,6 +205,10 @@ def write_epub(screens: list, tree: list, images: Path, out: Path, w: int, h: in
         z.writestr("OEBPS/nav.xhtml", nav, zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/toc.ncx", ncx, zipfile.ZIP_DEFLATED)
         for s in screens:
-            z.writestr(f"OEBPS/text/{s.stem}.xhtml", _page_xhtml(s, w, h), zipfile.ZIP_DEFLATED)
-            # === PNGs are already compressed; storing them keeps the build fast. ===
-            z.write(images / f"{s.stem}.png", f"OEBPS/img/{s.stem}.png", zipfile.ZIP_STORED)
+            z.writestr(f"OEBPS/text/{s.stem}.xhtml", _page_xhtml(s, w, h, head), zipfile.ZIP_DEFLATED)
+            if images:
+                # === PNGs are already compressed; storing them keeps the build fast. ===
+                z.write(images / f"{s.stem}.png", f"OEBPS/img/{s.stem}.png", zipfile.ZIP_STORED)
+        for path, (media, data) in sorted(assets.items()):
+            packed = zipfile.ZIP_STORED if media == "image/png" else zipfile.ZIP_DEFLATED
+            z.writestr(f"OEBPS/{path}", data, packed)

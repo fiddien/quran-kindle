@@ -4,7 +4,7 @@ import sys
 from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 
-from . import sources
+from . import sources, textbook
 from .companion import CompanionRenderer
 from .data import PAGE_COUNT, load, load_glosses
 from .epub import Screen, toc_tree, write_epub
@@ -30,6 +30,7 @@ GLOSS_FONTS = [
 TITLES = {
     "mushaf": "المصحف الشريف · Madinah Mushaf",
     "companion": "Madinah Mushaf · Word by Word (English)",
+    "mushaf-text": "المصحف الشريف · Madinah Mushaf (text)",
 }
 
 _renderer = None
@@ -75,7 +76,7 @@ def _pages(spec):
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--device", choices=sorted(DEVICES), default="paperwhite")
-    p.add_argument("--book", default="mushaf,companion", help="comma list of mushaf,companion")
+    p.add_argument("--book", default="mushaf,companion", help="comma list of mushaf,companion,mushaf-text (experimental)")
     p.add_argument("--formats", default="epub,pdf", help="comma list of epub,pdf")
     p.add_argument("--pages", help="render only these pages, e.g. 1-3,604 (for previews)")
     p.add_argument("--cache", type=Path, default=Path("cache"))
@@ -97,6 +98,17 @@ def main(argv=None):
     device = DEVICES[a.device]
     wanted = _pages(a.pages)
     for book in a.book.split(","):
+        if book == "mushaf-text":
+            # === experimental: real text instead of page images (EPUB only) ===
+            qcf4 = sources.fetch("quran-qcf4", a.cache)
+            mushaf = load(qcf4, sources.fetch("quran-meta", a.cache))
+            renderer = Renderer(mushaf, qcf4 / "fonts-woff2", device, ui_font, a.text_scale)
+            out = a.out / a.device / f"mushaf-text-{a.device}.epub"
+            out.parent.mkdir(parents=True, exist_ok=True)
+            print(f"mushaf-text: laying out 604 pages for {device.name}")
+            textbook.build(renderer, out, toc_tree(mushaf), TITLES[book], a.cache / "ttf")
+            print(f"  wrote {out}")
+            continue
         if book == "companion" and not gloss_fonts:
             sys.exit("no serif font found for the English glosses (install Liberation or DejaVu fonts)")
         images = a.out / a.device / book

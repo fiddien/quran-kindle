@@ -67,7 +67,11 @@ class Renderer:
 
     def render(self, page: Page) -> Image.Image:
         img = Image.new("L", (self.device.width, self.device.height), PAPER)
-        draw = ImageDraw.Draw(img)
+        self.draw_page(ImageDraw.Draw(img), page)
+        return quantize(img)
+
+    def draw_page(self, draw, page: Page) -> None:
+        """Draw one page onto anything with ImageDraw's text/line/rectangle methods."""
         self.frame(draw, page)
         if len(page.lines) == 15:
             slots = [self.top + i * self.pitch for i in range(15)]
@@ -86,7 +90,6 @@ class Renderer:
                 ink_centered(draw, (self.device.width / 2, y + self.pitch * 0.42), word["char"], font)
             else:
                 self._line(draw, line["words"], y, centered=opening)
-        return quantize(img)
 
     def _baseline(self, y: float) -> float:
         # === QCF4 ink sits roughly 0.55 em above and 0.4 em below the baseline. ===
