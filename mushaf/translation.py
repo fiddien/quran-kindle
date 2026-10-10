@@ -16,6 +16,7 @@ from .render import INK, Renderer
 TEXT_INK = 24
 INTRO_INK = 64
 NOTE_INK = 40
+TOPIC_INK = 110
 SALLA = "\ufdfa"  # === the salla symbol, which the serif faces lack: drawn in Amiri Quran instead ===
 MARK = 0xE000  # === footnote n of a verse is stood in for by chr(MARK + n) while wrapping ===
 SUP = re.compile(r'<sup foot_note="?(\d+)"?>[^<]*</sup>')
@@ -203,7 +204,12 @@ class TranslationRenderer(Renderer):
         note_size = max(round(size * 0.8), 8)
         note_font = ImageFont.truetype(self.serif, note_size)
         note_number = ImageFont.truetype(self.bold, note_size)
-        width = self.device.width - 2 * self.side
+        topic_font = ImageFont.truetype(self.italic, max(round(size * 0.8), 8))
+        full = self.device.width - 2 * self.side
+        # === with topics, the verses keep 70% of the width and the topics take a column at the right ===
+        column = full * 0.3 if self.topics else 0
+        gutter = size * 0.8 if self.topics else 0
+        width = full - column - gutter
         leading = size * 1.32
         rows, notes = [], []
         for block in blocks:
@@ -222,8 +228,15 @@ class TranslationRenderer(Renderer):
             indent = sum(_length(r) for r in lead)
             words = [self._word_runs(w, body, marker, numbers) for w in text.split()]
             lines = self._wrap_runs(words, body.getlength(" "), width - indent, width)
+            topics = self._topic_lines(self.topics.get(block[-1], []), topic_font, column)
+            if topics:
+                # === the topics stand beside the verse's first line; a long list lengthens the verse ===
+                rows.append(("side", full - column, topics, topic_font.size * 1.2))
             for i, line in enumerate(lines or [[]]):
                 rows.append(("runs", 0, lead + line if i == 0 else line, leading))
+            spill = len(topics) * topic_font.size * 1.2 - len(lines or [[]]) * leading
+            if spill > 0:
+                rows.append(("space", spill))
             rows.append(("space", leading * 0.35))
         while rows and rows[0][0] == "space":
             rows.pop(0)
@@ -294,6 +307,8 @@ class TranslationRenderer(Renderer):
             base = y + _height(row) * 0.78
             if row[0] == "center":
                 draw.text((self.device.width / 2, base), row[1], font=row[2], fill=INK, anchor="ms")
+            elif row[0] == "side":
+                self._draw_side(draw, x0 + row[1], y, row[2], row[3])
             else:
                 _draw_runs(draw, x0 + row[1], base, row[2])
             y += _height(row)
@@ -357,75 +372,39 @@ class TranslationRenderer(Renderer):
                     _draw_runs(draw, self.side + row[1], base, row[2])
             y += _height(row)
 
-    def topic_layouts(self, page) -> list:
-        """Rows per screen listing, verse by verse, the index entries that cite each verse."""
-        if not self.topics:
-            return []
-        body = ImageFont.truetype(self.serif, self.reading)
-        bold = ImageFont.truetype(self.bold, self.reading)
-        heading = ImageFont.truetype(self.bold, round(self.reading * 1.1))
-        width = self.device.width - 2 * self.side
-        leading = self.reading * 1.32
-        dot = " · "
-        rows = []
-        for block in self.blocks(page):
-            if block[0] == "heading":
-                rows += [("space", leading * 0.3), ("center", block[1], heading, leading * 1.25)]
-                continue
-            names = self.topics.get(block[-1], [])
-            if not names:
-                continue
-            # === items: (x, text, font, target); a wrapped line hangs under the first name ===
-            number = f"{block[1]}  "
-            hang = bold.getlength(number)
-            line, x = [(0, number, bold, None)], hang
-            for i, name in enumerate(names):
-                text = name + (dot if i < len(names) - 1 else "")
-                if x + body.getlength(name) > width and len(line) > 1:
-                    rows.append(("links", line, leading))
-                    line, x = [], hang
-                line.append((x, name, body, self.entries.get(name)))
-                x += body.getlength(text)
-                if i < len(names) - 1:
-                    line.append((x - body.getlength(dot), dot, body, None))
-            rows.append(("links", line, leading))
-            rows.append(("space", leading * 0.3))
-        room = self.text_bottom - self.text_top
-        screens, current, used = [], [], 0.0
-        for i, row in enumerate(rows):
-            # === a surah heading stays with the verse after it ===
-            need = _height(row) + (_height(rows[i + 1]) if row[0] == "center" and i + 1 < len(rows) else 0)
-            if current and used + need > room:
-                screens.append(current)
-                current, used = [], 0.0
-            if not current and row[0] == "space":
-                continue
-            current.append(row)
-            used += _height(row)
-        return screens + [current] if current else screens
+    def _topic_lines(self, names: list, font, width: float) -> list:
+        """A verse's topics wrapped into the column, as lines of (x, text, target);
+        each word of a name links to the name's index entry."""
+        lines, line, x = [], [], 0.0
+        space = font.getlength(" ")
+        for i, name in enumerate(names):
+            target = self.entries.get(name)
+            words = name.split() + (["·"] if i < len(names) - 1 else [])
+            for j, word in enumerate(words):
+                w = font.getlength(word)
+                if line and x + w > width:
+                    lines.append(line)
+                    line, x = [], 0.0
+                line.append((x, word, None if j == len(words) - 1 and i < len(names) - 1 else target))
+                x += w + space
+        if line:
+            lines.append(line)
+        return [(font, ln) for ln in lines]
 
-    def draw_topics(self, draw, page, rows, index, count):
-        italic = ImageFont.truetype(self.italic, round(self.top * 0.4))
-        label = "Topics" + (f" · {index + 1} of {count}" if count > 1 else "")
-        self.frame(draw, page, center=lambda d, xy, band: d.text(xy, label, font=italic, fill=96, anchor="mm"))
-        y = self.text_top
-        for row in rows:
-            if row[0] == "center":
-                draw.text((self.device.width / 2, y + _height(row) * 0.78), row[1], font=row[2], fill=INK,
-                          anchor="ms")
-            elif row[0] == "links":
-                base = y + _height(row) * 0.78
-                for x, text, font, target in row[1]:
-                    draw.text((self.side + x, base), text, font=font, fill=INK if target is None else TEXT_INK,
-                              anchor="ls")
-                    if target and hasattr(draw, "link"):
-                        draw.link((self.side + x - 2, y, self.side + x + font.getlength(text) + 2, y + _height(row)),
-                                  target)
-            y += _height(row)
+    def _draw_side(self, draw, x, y, lines, height):
+        """A verse's topics in the right-hand column, with a hairline to their left."""
+        draw.line((x - 6, y + height * 0.15, x - 6, y + height * len(lines)), fill=200, width=1)
+        for font, items in lines:
+            base = y + height * 0.8
+            for dx, text, target in items:
+                draw.text((x + dx, base), text, font=font, fill=TOPIC_INK, anchor="ls")
+                if target and hasattr(draw, "link"):
+                    draw.link((x + dx - 1, y, x + dx + font.getlength(text) + 1, y + height), target)
+            y += height
 
     def screens_ops(self, page) -> list:
-        """The mushaf page, the introductions of surahs that begin on it, its translation, then
-        the topics of its verses, as (Screen, recorded ops)."""
+        """The mushaf page, the introductions of surahs that begin on it, then its translation,
+        as (Screen, recorded ops)."""
         from .epub import Screen
         from .textbook import Recorder
 
@@ -442,11 +421,6 @@ class TranslationRenderer(Renderer):
             rec = Recorder()
             self.draw_screen(rec, page, layout, i, len(parts))
             out.append((Screen(f"t{page.number:03d}{chr(ord('a') + i)}", page.number, False), rec.ops))
-        topics = self.topic_layouts(page)
-        for i, rows in enumerate(topics):
-            rec = Recorder()
-            self.draw_topics(rec, page, rows, i, len(topics))
-            out.append((Screen(f"k{page.number:03d}{chr(ord('a') + i)}", page.number, False), rec.ops))
         return out
 
 
@@ -473,4 +447,6 @@ def _draw_runs(draw, x, base, runs):
 
 
 def _height(row) -> float:
+    if row[0] == "side":  # === drawn beside the rows that follow it, so it adds no height ===
+        return 0
     return row[-1] if row[0] != "space" else row[1]
