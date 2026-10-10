@@ -68,7 +68,9 @@ Where a surah begins, the mushaf page is followed by the theme of the surah from
 introduction in QUL, on screens of its own.
 
 Beside each verse, a narrow column at the right lists the topics QUL assigns to it;
-tapping a topic opens its entry in the topic index at the back. The index
+tapping a topic opens its entry in the topic index at the back. Names QUL lists
+separately for one topic (spellings, Arabic and English names, singular and plural) are
+folded into one entry, listed in `mushaf/folds.py`. The index
 lists the topics A to Z with the mushaf pages where each appears, sub-topics nested
 beneath; tapping a page number opens that page. The index is also in the table of
 contents.
