@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import sources, textbook
 from .companion import CompanionRenderer
-from .cover import _rosette as render_rosette
+from .cover import render_cover
 from .topics import INDEX, index_screens, load_topics
 from .translation import TranslationRenderer, load_footnoted, load_themes, load_translation
 from .data import PAGE_COUNT, load, load_glosses
@@ -107,7 +107,7 @@ def main(argv=None):
     gloss_fonts = next((f for f in GLOSS_FONTS if all(Path(x).exists() for x in f)), None)
 
     # === download sources once, before the worker processes start reading them ===
-    for name in ("quran-qcf4", "quran-meta", "quran-wbw", "amiri-quran", "aref-ruqaa", "quran-cloud"):
+    for name in ("quran-qcf4", "quran-meta", "quran-wbw", "amiri-quran", "inter", "quran-cloud"):
         sources.fetch(name, a.cache)
 
     device = DEVICES[a.device]
@@ -141,7 +141,7 @@ def main(argv=None):
         stem = a.out / a.device / f"{book}-{a.device}"
         size = (device.width, device.height, TITLES[book])
         if "epub" in a.formats:
-            cover = _cover_png(book, device, a.cache, gloss_fonts)
+            cover = _cover_png(book, device, a.cache)
             write_epub(screens, tree, images, stem.with_suffix(".epub"), *size,
                        assets={"img/cover.png": ("image/png", cover)}, cover="img/cover.png")
             print(f"  wrote {stem.with_suffix('.epub')}")
@@ -150,15 +150,10 @@ def main(argv=None):
             print(f"  wrote {stem.with_suffix('.pdf')}")
 
 
-def _cover_png(key: str, device, cache: Path, fonts) -> bytes:
+def _cover_png(key: str, device, cache: Path) -> bytes:
     import io
 
-    qcf4 = sources.fetch("quran-qcf4", cache)
-    amiri = sources.fetch("amiri-quran", cache) / "files" / "amiri-quran-arabic-400-normal.woff2"
-    ruqaa = sources.fetch("aref-ruqaa", cache) / "files" / "aref-ruqaa-arabic-700-normal.woff2"
-    # === the rosette, with the title in outlined ruq'ah ===
-    img = render_rosette(key, device.width, device.height, qcf4 / "fonts-woff2", amiri, *fonts,
-                         title_font=ruqaa, outline=1, title_ink=40, measure=0.55)
+    img = render_cover(key, device.width, device.height, sources.fetch("inter", cache) / "files")
     buf = io.BytesIO()
     img.save(buf, "PNG", optimize=True)
     return buf.getvalue()
@@ -201,7 +196,7 @@ def _text_book(book, a, device, ui_font, fonts, wanted):
     stem.parent.mkdir(parents=True, exist_ok=True)
     print(f"{book}: laying out {len(wanted)} pages for {device.name}")
     if "epub" in a.formats:
-        cover = _cover_png(TEXT_BOOKS[book], device, a.cache, fonts)
+        cover = _cover_png(TEXT_BOOKS[book], device, a.cache)
         textbook.build(screens(renderer(device)), tree, stem.with_suffix(".epub"), device.width, device.height,
                        TITLES[book], a.cache / "ttf", cover)
         print(f"  wrote {stem.with_suffix('.epub')}")

@@ -3,8 +3,8 @@
 quran-qcf4  : 604 page layouts (15 lines each) + KFGQPC QCF4 glyph fonts.
 quran-meta  : juz' and hizb-quarter boundaries (absolute ayah numbers).
 quran-wbw   : English word-by-word glosses (a dump of quran.com's word data).
-amiri-quran : Amiri Quran typeface (OFL), fallback for Arabic titles.
-aref-ruqaa  : Aref Ruqaa typeface (OFL) for the ruq'ah title on the covers.
+amiri-quran : Amiri Quran typeface (OFL), for the salla symbol in the translation book.
+inter       : Inter typeface (OFL) for the English type on the covers.
 quran-cloud : English surah names (and a plain Saheeh International text).
 
 The fonts are not ours to redistribute, so they are fetched at build time
@@ -39,9 +39,9 @@ PACKAGES = {
         "https://registry.npmjs.org/@fontsource/amiri-quran/-/amiri-quran-5.3.0.tgz",
         "sha512-z/Y3JCqGWnWLpfJGBWPf7C42IxHjxxuwgcCHLmsU/hYd65GHXkZ/XTVpEGtWrEx9VlzdzMMRHDNTJvs8OwAeEw==",
     ),
-    "aref-ruqaa": (
-        "https://registry.npmjs.org/@fontsource/aref-ruqaa/-/aref-ruqaa-5.3.0.tgz",
-        "sha512-GC+ckm4v2zndUWuR2JiMdO333mNZqrzxHN/9rpBJhLwDwcwYXzr+GzCRzgK6afGMhYnV0pwrqeGeLm4ZNmWhWQ==",
+    "inter": (
+        "https://registry.npmjs.org/@fontsource/inter/-/inter-5.3.0.tgz",
+        "sha512-RofMylZmjlJEfELXeNHFWBRcSs75rGU/6bV2S2jfnvv/3rPXPGe0LgUJTklcHZ9lM4OZmAVFhcJPnACfb91A3g==",
     ),
     "quran-cloud": (
         "https://registry.npmjs.org/quran-cloud/-/quran-cloud-1.0.0.tgz",

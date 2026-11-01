@@ -126,9 +126,9 @@ The build downloads pinned npm packages and checks each against its sha512 hash:
   surah introductions of Sayyid Abul A'la Maududi's *Tafhim al-Qur'an*, and the topics.
   QUL serves its files to signed-in users, so they are committed under `sources/` and
   checked against pinned sha512 hashes;
-- [`@fontsource/amiri-quran`](https://fontsource.org/fonts/amiri-quran) and
-  [`@fontsource/aref-ruqaa`](https://fontsource.org/fonts/aref-ruqaa) for the cover
-  titles (both OFL).
+- [`@fontsource/amiri-quran`](https://fontsource.org/fonts/amiri-quran) for the salla
+  symbol in the translation book, and [`@fontsource/inter`](https://fontsource.org/fonts/inter)
+  for the type on the covers (both OFL).
 
 The fonts belong to the King Fahd Complex.
 They may be used only for rendering the Qur'an. The released books contain rendered pages,
