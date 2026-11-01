@@ -99,7 +99,9 @@ Devices: `paperwhite` (2021+),
 Pushing a tag such as `v1.0.0`, or running the *Build books* workflow by hand with a
 release version, makes GitHub Actions build the `paperwhite`, `kindle`, `oasis` and
 `kindle-2019` sizes and publish them as a release. Run by hand without a version, the workflow
-only builds; its files then appear as downloads on that run's page for 7 days.
+only builds; its files then appear as downloads on that run's page for 7 days. Its *books* field
+limits a run to the books named, e.g. `companion,companion-text`; a release made that way
+contains only those books, and its notes point to the previous release for the rest.
 
 ## Put it on the Kindle
 

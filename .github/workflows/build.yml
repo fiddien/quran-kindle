@@ -10,6 +10,10 @@ on:
         description: "Publish as this release version, e.g. v1.0.0 (leave empty to only build)"
         required: false
         default: ""
+      books:
+        description: "Build only these books, e.g. companion,companion-text (leave empty for all)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -37,9 +41,16 @@ jobs:
           path: cache
           key: sources-${{ hashFiles('mushaf/sources.py', 'mushaf/textbook.py') }}
       - name: Build image books
+        if: inputs.books == ''
         run: python -m mushaf --device ${{ matrix.device }}
       - name: Build text editions (EPUB and PDF)
+        if: inputs.books == ''
         run: python -m mushaf --device ${{ matrix.device }} --book mushaf-text,companion-text,translation-text
+      - name: Build the chosen books
+        if: inputs.books != ''
+        env:
+          BOOKS: ${{ inputs.books }}
+        run: python -m mushaf --device ${{ matrix.device }} --book "$BOOKS"
       - uses: actions/upload-artifact@v4
         with:
           name: books-${{ matrix.device }}
@@ -62,9 +73,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           # === a hand-run release names its version; gh creates the tag at this commit ===
           TAG: ${{ inputs.release || github.ref_name }}
+          BOOKS: ${{ inputs.books }}
         run: |
+          notes="Download the EPUB for your device and send it with Send to Kindle, or copy the PDF over USB. See the README for which file fits your e-reader."
+          if [ -n "$BOOKS" ]; then
+            # === a partial release points readers to the last release for the books it leaves out ===
+            previous=$(gh release list --repo "${{ github.repository }}" --limit 1 --json tagName --jq '.[0].tagName')
+            notes="This release updates only these books: $BOOKS. The other books are unchanged; download them from [$previous](https://github.com/${{ github.repository }}/releases/tag/$previous).
+
+          $notes"
+          fi
           gh release create "$TAG" books/* \
             --repo "${{ github.repository }}" \
             --target "${{ github.sha }}" \
             --title "Madinah Mushaf for e-readers $TAG" \
-            --notes "Download the EPUB for your device and send it with Send to Kindle, or copy the PDF over USB. See the README for which file fits your e-reader."
+            --notes "$notes"
