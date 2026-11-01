@@ -10,11 +10,17 @@ from .data import Page
 from .render import INK, PAPER, Renderer, ink_centered, quantize
 
 GLOSS_INK = 48
+# === sizes relative to the screen width; on a 300-ppi Paperwhite, 0.039 is about 11.5 pt ===
+AR_SCALE = 0.039
+GLOSS_SCALE = 0.0243
+
+_hyphenator = None
 
 
 class CompanionRenderer(Renderer):
     def __init__(self, *args, glosses: dict, gloss_font: str, gloss_italic: str,
-                 lines_per_screen: int = 5, gloss_scale: float = 0.034, **kw):
+                 lines_per_screen: int = 5, ar_scale: float = AR_SCALE, gloss_scale: float = GLOSS_SCALE,
+                 **kw):
         super().__init__(*args, **kw)
         self.lines_per_screen = lines_per_screen
         self.glosses = glosses
@@ -24,10 +30,12 @@ class CompanionRenderer(Renderer):
         # === narrower margins than the mushaf: glosses need the width ===
         self.margin = round(w * 0.04)
         self.width = w - 2 * self.margin
-        # === one Arabic size for the whole book; only rare, very dense rows go smaller ===
-        self.ar_size = round(w * 0.044)
-        # === about 8.6 pt on a 6-inch 167-ppi screen ===
+        # === one Arabic size and one English size for the whole book ===
+        self.ar_size = round(w * ar_scale)
         self.gloss_size = round(w * gloss_scale)
+        self.gfont = ImageFont.truetype(gloss_font, self.gloss_size)
+        # === counts of rows too wide and screens too tall even after wrapping and hyphenating ===
+        self.unfit = self.overfull = 0
 
     def parts(self, page: Page) -> list:
         n = self.lines_per_screen
@@ -69,57 +77,74 @@ class CompanionRenderer(Renderer):
         top = self.top + self.device.height * 0.01
         bottom = self.device.height - self.device.height * 0.012
 
-        # === shrink everything a little if a dense screen would overflow ===
-        scale = 1.0
-        while True:
-            rows = [self._layout(line, scale) for line in lines]
-            need = sum(r["height"] for r in rows)
-            if need <= bottom - top or scale < 0.7:
-                break
-            scale -= 0.04
+        rows = [self._layout(line) for line in lines]
+        need = sum(r["height"] for r in rows)
+        self.overfull += need > bottom - top
         gap = max(0, (bottom - top - need) / len(rows))
         y = top + gap / 2
         for row in rows:
             self._draw_row(draw, row, y)
             y += row["height"] + gap
 
-    def _layout(self, line, scale):
+    def _layout(self, line):
         words = line["words"]
         kind = words[0]["type"]
-        ar = round(self.ar_size * scale)
+        ar, gsize, gfont = self.ar_size, self.gloss_size, self.gfont
         if kind == "surah_header":
             return {"kind": kind, "word": words[0], "height": ar * 1.7}
         if kind == "bismillah":
             return {"kind": kind, "word": words[0], "height": ar * 1.5, "size": ar}
 
-        # === wrap glosses narrower, then shrink them, until the row fits the width ===
-        # === as a last resort, shrink the Arabic of a very dense line too ===
-        attempts = [(1.0, f, w) for f in (1.0, 0.92, 0.85, 0.78, 0.72) for w in (4.5, 3.6, 2.8, 2.2, 1.6)]
-        attempts += [(a, 0.72, 1.6) for a in (0.94, 0.88, 0.82, 0.76, 0.7, 0.6, 0.5)]
-        # === final safety net for the few rows of long, unbreakable glosses: shrink both ===
-        attempts += [(0.5 * f, 0.72 * f, 1.6) for f in (0.9, 0.8, 0.7, 0.6, 0.5, 0.4)]
-        full = ar
-        for ar_scale, font_scale, wrap_em in attempts:
-            ar = round(full * ar_scale)
-            gsize = round(self.gloss_size * scale * font_scale)
-            gfont = ImageFont.truetype(self.gloss_font, gsize)
-            min_gap = gsize * 0.45
-            cells = []
-            for w in words:
-                font = self.font(w["font"], ar)
-                aw = font.getlength(w["char"])
-                gloss = self.glosses.get((w.get("verse_key"), w.get("position"))) if w["type"] == "word" else None
-                lines = wrap(gloss, gfont, max(aw, gsize * wrap_em)) if gloss else []
-                cw = max([aw] + [gfont.getlength(s) for s in lines])
-                cells.append({"word": w, "font": font, "aw": aw, "gloss": lines, "cw": cw})
-            natural = sum(c["cw"] for c in cells)
-            if natural + min_gap * (len(cells) - 1) <= self.width:
+        # === both scripts keep one size for the whole book, and every mushaf line stays one row ===
+        # === a crowded row first wraps its glosses narrower, then tightens the word spacing, ===
+        # === and only then hyphenates its longest English words ===
+        font = [self.font(w["font"], ar) for w in words]
+        aw = [f.getlength(w["char"]) for f, w in zip(font, words)]
+        gloss = [self.glosses.get((w.get("verse_key"), w.get("position"))) if w["type"] == "word" else None
+                 for w in words]
+
+        def cell(i, width, hyphenate=False):
+            g = gloss[i]
+            lines = wrap(g, gfont, width, hyphenate=hyphenate) if g else []
+            cw = max([aw[i]] + [gfont.getlength(s) for s in lines])
+            return {"word": words[i], "font": font[i], "aw": aw[i], "gloss": lines, "cw": cw}
+
+        def fits(cells, gap_em):
+            return sum(c["cw"] for c in cells) + gsize * gap_em * (len(cells) - 1) <= self.width
+
+        gap_em = 0.45
+        for wrap_em in (4.5, 3.6, 2.8, 2.2, 1.6, 1.0, 0):
+            cells = [cell(i, max(aw[i], gsize * wrap_em)) for i in range(len(words))]
+            if fits(cells, gap_em):
                 break
+        else:
+            for gap_em in (0.38, 0.3):
+                if fits(cells, gap_em):
+                    break
+            else:
+                # === hyphenate one column at a time, widest first, until the line fits ===
+                done = set()
+                while not fits(cells, gap_em):
+                    open_ = [i for i, c in enumerate(cells) if i not in done and c["cw"] > c["aw"] + 1]
+                    if not open_:
+                        break
+                    i = max(open_, key=lambda k: cells[k]["cw"])
+                    narrower = cell(i, cells[i]["cw"] - gsize * 0.2, hyphenate=True)
+                    if narrower["cw"] < cells[i]["cw"]:
+                        cells[i] = narrower
+                    else:
+                        done.add(i)
+        natural = sum(c["cw"] for c in cells)
+        min_gap = gsize * gap_em
+        if natural + min_gap * (len(cells) - 1) > self.width:
+            # === last resort, for the densest line or two: whatever spacing is left ===
+            min_gap = max(0, (self.width - natural) / max(1, len(cells) - 1))
+            self.unfit += natural > self.width
         gloss_lines = max((len(c["gloss"]) for c in cells), default=0)
         return {
-            "kind": "text", "cells": cells, "ar": ar, "full": full, "gfont": gfont, "gsize": gsize,
+            "kind": "text", "cells": cells, "ar": ar, "full": ar, "gfont": gfont, "gsize": gsize,
             "natural": natural, "min_gap": min_gap,
-            "height": full * 1.38 + gloss_lines * gsize * 1.12,
+            "height": ar * 1.38 + gloss_lines * gsize * 1.12,
         }
 
     def _draw_row(self, draw, row, y):
@@ -155,11 +180,15 @@ class CompanionRenderer(Renderer):
             x -= cw + gap
 
 
-def wrap(text: str, font, width: float) -> list:
+def wrap(text: str, font, width: float, hyphenate: bool = False) -> list:
+    """Break text into lines no wider than `width`; with hyphenate, split overlong words at syllables."""
     lines, current = [], ""
-    for token in text.split():
+    tokens = text.split()
+    if hyphenate:
+        tokens = [piece for token in tokens for piece in _hyphenate(token, font, width)]
+    for token in tokens:
         candidate = f"{current} {token}".strip()
-        if not current or font.getlength(candidate) <= width:
+        if not current or (font.getlength(candidate) <= width and not current.endswith("-")):
             current = candidate
         else:
             lines.append(current)
@@ -167,3 +196,33 @@ def wrap(text: str, font, width: float) -> list:
     if current:
         lines.append(current)
     return lines
+
+
+def _hyphenate(token: str, font, width: float) -> list:
+    """Split a word too wide for `width` into hyphen-ended pieces that fit, breaking at syllables."""
+    global _hyphenator
+    if font.getlength(token) <= width:
+        return [token]
+    if _hyphenator is None:
+        import pyphen
+        _hyphenator = pyphen.Pyphen(lang="en_US")
+    pieces, rest = [], token
+    while font.getlength(rest) > width:
+        # === the longest head that fits with its hyphen; a word's own hyphen is kept, not doubled ===
+        heads = [(rest[:i] + ("" if rest[i - 1] == "-" else "-"), rest[i:])
+                 for i in _breaks(rest)]
+        fitting = [h for h in heads if font.getlength(h[0]) <= width]
+        if not fitting:
+            if not heads:
+                break
+            fitting = heads[:1]  # === no syllable fits: take the shortest head anyway ===
+        head, rest = fitting[-1]
+        pieces.append(head)
+    return pieces + [rest]
+
+
+def _breaks(word: str) -> list:
+    """Positions where `word` may break: after its own hyphens, and at syllables of its letters."""
+    out = {i + 1 for i, ch in enumerate(word[:-1]) if ch == "-"}
+    out |= set(_hyphenator.positions(word))
+    return sorted(i for i in out if 1 < i < len(word) - 1)

@@ -55,6 +55,12 @@ At readable sizes a page needs three screens of five lines each. Every screen
 is labelled with the mushaf page number, so "Go to page 50" can still find
 page 50. `companion-text` is the same book in real text.
 
+The Arabic and the English each keep one size throughout the book (about 11.5 pt and
+7 pt on a Paperwhite), and every mushaf line stays one row, as printed. A crowded line
+wraps its English under each word, then tightens the spacing between words, and only
+then hyphenates its longest English words, one column at a time; about 150 words in
+the whole book are broken this way.
+
 ## Translation
 
 `translation-text` follows each mushaf page with the Saheeh International English

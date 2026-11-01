@@ -2,3 +2,4 @@ Pillow>=10.0
 reportlab>=4.0
 fonttools>=4.40
 brotli>=1.0
+pyphen>=0.14
